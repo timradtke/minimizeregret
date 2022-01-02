@@ -1,0 +1,845 @@
+---
+title: Pointwise Mutual Information for Instacart Product Recommendations
+author: Tim Radtke
+date: '2018-06-17'
+slug: instacart-products-bought-together
+categories:
+  - Machine Learning
+tags:
+  - recommender
+  - pointwise mutual information
+  - Instacart
+  - product recommendations
+---
+
+
+
+<p><em>Using pointwise mutual information, we create highly efficient “customers who bought this item also bought” style product recommendations for more than 8000 Instacart products. The method can be implemented in a few lines of SQL yet produces high quality product suggestions. Check them out <a href="https://timradtke.shinyapps.io/instacart/">in this Shiny app</a>.</em></p>
+<p>Back in school, I was a big fan of the Detective Conan anime. For whatever reason, one of the episodes stuck with me. <a href="https://www.detectiveconanworld.com/wiki/A_Dangerous_Recipe">In that episode</a>, the protagonists “pick up receipts in a convenience store to guess what the people are buying for dinner.” While this leads them inadvertently to a crime they need to solve, we will rather stick with the idea of finding out which products appear together in customers’ baskets.</p>
+<p>Based on the <a href="https://www.instacart.com/datasets/grocery-shopping-2017">Instacart Online Grocery Shopping</a> dataset <a href="https://tech.instacart.com/3-million-instacart-orders-open-sourced-d40d29ead6f2">released a year ago</a>, we analyze about 3 million orders of about 200,000 Instacart users. Similarly to how the detective boys used bought-together patterns to identify what customers were going to cook that evening, we’re going to find products that are bought together in order to create an effective, yet simple recommendation algorithm. So simple in fact, that the entire analysis could be productionized in plain SQL.</p>
+<div id="instacart-data-set" class="section level2">
+<h2>Instacart Data Set</h2>
+<p>From <a href="https://en.wikipedia.org/wiki/Instacart">Wikipedia</a>:</p>
+<blockquote>
+<p>Instacart is an American company that operates as a same-day grocery delivery service. Customers select groceries through a web application from various retailers and delivered by a personal shopper.</p>
+</blockquote>
+<p>The Instacart Online Grocery Shopping Dataset 2017 was made public by Instacart and can be downloaded <a href="https://www.instacart.com/datasets/grocery-shopping-2017">here</a> and offers a unique ability to try out recommendation algorithms on customer basket data. Then Instacart’s VP Data Science, Jeremy Kun introduced the data set in a <a href="https://tech.instacart.com/3-million-instacart-orders-open-sourced-d40d29ead6f2">Medium post</a>. The dataset contains information on the products contained in about 3 million orders made by 200,000 Instacart customers. It thus lends itself as a testbed for machine learning methods that one would tend to apply at ecommerce companies–in particular those with a large variety of products, large basket sizes and returning customers.</p>
+</div>
+<div id="expected-result" class="section level2">
+<h2>Expected Result</h2>
+<div class="figure">
+<img src="/post/amazon_bought_together.png" />
+
+</div>
+<p>In <a href="https://tech.instacart.com/3-million-instacart-orders-open-sourced-d40d29ead6f2">his blog post</a>, Jeremy Kun highlights how Instacart uses the data for example to sort their Buy It Again listings, or to model the Frequently Bought With recommendations. Here I will restrict myself to recommendations in the style of the latter. The results of the algorithm should be able to run under a “Frequently Bought Together” or “Customers Who Bought This Item Also Bought” headline. Much like Amazon’s famous recommendations, or the ones that Instacart employs itself.</p>
+<div class="figure">
+<img src="/post/instacart_pita_bread.png" />
+
+</div>
+<div class="figure">
+<img src="/post/instacart_pita_bought_together.png" />
+
+</div>
+<p>Take for example <a href="https://www.instacart.com/store/items/item_2067636">this Whole Foods pita bread</a> offered on Instacart. Its page features recommendations for hummus and baba ghannouj under an “Often Bought With” headline, offering them as common <em>complements</em>. This style of recommendation is the goal, where we find items that go well together based on past purchases made by all customers. Those recommendations serve as a simple way for customers to fill their baskets with items that increase the value of the items they have already added to their baskets. It also ensures that customers don’t forget to buy items they really ought to buy.</p>
+<p>This stands in contrast to “Similar Items” or “Related Items” recommendations that are often found on the same product detail pages. These recommendations usually aim at direct <em>substitutes</em> to the product on the current detail page. On Instacart’s page for Whole Foods Market Organic Whole Wheat Pita Bread, I got served recommendations for a couple of other pita varieties, for example.</p>
+<div class="figure">
+<img src="/post/instacart_pita_similar_items.png" />
+
+</div>
+</div>
+<div id="methodology" class="section level2">
+<h2>Methodology</h2>
+<p>So how exactly are we going to find the products that are often bought with pita bread? How do we know what customers who bought this item also bought?</p>
+<p>The naive approach would be to count the pure item co-occurrence in orders: For every item, count how often it has been in an order with the pita bread, then recommend the item with the highest count. While this might surface a good recommendation from time to time, it will mostly surface bananas and toilet paper. Bananas and toilet paper are examples of a few very common items which appear in a large share of orders without being related to any product in particular. They would dominate any raw co-occurrence count just by their own purchase probability.</p>
+<p>To account for this difficulty, we will make use of a simple trick from natural language processing: Pointwise Mutual Information.</p>
+<div id="pointwise-mutual-information" class="section level3">
+<h3>Pointwise Mutual Information</h3>
+<p>Pointwise Mutual Information is a measure of association from information theory and has found a popular application in natural language processing. There, it measures the association between a word and the word’s context, e.g. close words in a sentence (bi-grams, <em>n</em>-grams, etc.). It does so by comparing how often the word and the context appear together against how often they would appear together were they independent events.</p>
+<p>Following <a href="https://en.wikipedia.org/wiki/Pointwise_mutual_information">Wikipedia</a>, we have for the outcomes <span class="math inline">\(x\)</span> and <span class="math inline">\(c\)</span> of two discrete random variables <span class="math inline">\(X\)</span> and <span class="math inline">\(C\)</span>:</p>
+<p><span class="math display">\[
+pmi(x;c) = \log \frac{p(x,c)}{p(x)p(c)}
+\]</span></p>
+<p>Here, the numerator describes the joint probability, while the denominator describes the joint probability under independence. Thus, were the two events independent, we would have <span class="math inline">\(pmi(x;c) = \log(1) = 0\)</span>. Consequently, positive PMI values imply positive association between the events (e.g., the word and its context, or between two products).</p>
+<p>Similarly, negative PMI values should indicate negative relationships—but it’s generally not as easy to think in terms of words that do <em>not</em> appear together. While it’s easy to come up with co-occuring words (Google &amp; Facebook, Scrum &amp; Agile, Obama &amp; Merkel), I failed to quickly come up with examples for the opposite. It’s not how we’re tuned to think. Also, the necessary corpus to correctly measure the PMI of words that do not appear together is very, very large—because they don’t appear together (see <a href="https://web.stanford.edu/~jurafsky/slp3/15.pdf">this book chapter by Daniel Jurafsky and James H. Martin</a>).</p>
+</div>
+</div>
+<div id="implementation" class="section level2">
+<h2>Implementation</h2>
+<div id="data-preparation" class="section level3">
+<h3>Data Preparation</h3>
+<p>We’ll now prepare the Instacart data and apply the PMI measure on the observed orders to find products that have been bought together.</p>
+<p>To follow along, download the csv files <a href="https://www.instacart.com/datasets/grocery-shopping-2017">from Instacart</a>. First, we load some libraries and read the csv files. Note that these are the only packages we’ll need. This goes to show that we can do the same analysis in SQL, even though what follows is written in R.</p>
+<pre class="r"><code>library(dplyr)
+library(readr)
+
+# this is on order level
+orders &lt;- read_csv(&quot;orders.csv&quot;)
+# this is on product level
+products &lt;- read_csv(&quot;products.csv&quot;)
+# this is on order-product level
+order_products &lt;- read_csv(&quot;order_products__prior.csv&quot;)</code></pre>
+<p>Note that we only read one of the available <code>order_products</code> tables, since we will not perform an evaluation based on a test set. The <code>orders</code> table, however, contains information on more orders than those contained in <code>order_products</code>, so we slim it down:</p>
+<pre class="r"><code># number of all orders
+length(unique(orders$order_id))</code></pre>
+<pre><code>## [1] 3421083</code></pre>
+<pre class="r"><code># number of orders in our subset
+length(unique(order_products$order_id))</code></pre>
+<pre><code>## [1] 3214874</code></pre>
+<pre class="r"><code># we focus on the &quot;prior&quot; evaluation set for now
+orders &lt;- orders %&gt;%
+  filter(eval_set == &quot;prior&quot;) %&gt;%
+  select(-eval_set)</code></pre>
+<p>In the next few steps, we trim down the set of considered customers and products to only include those for which we have enough observations.</p>
+<pre class="r"><code># first, get for every user his number of orders
+users &lt;- orders %&gt;%
+  group_by(user_id) %&gt;%
+  summarize(orders = n())
+summary(users$orders)</code></pre>
+<pre><code>##    Min. 1st Qu.  Median    Mean 3rd Qu.    Max. 
+##    3.00    5.00    9.00   15.59   19.00   99.00</code></pre>
+<pre class="r"><code># drop all users who had a single order or a very large number of orders
+# (customers who only made one order might have bought &quot;trial baskets&quot;)
+good_users &lt;- users %&gt;%
+  filter(orders &lt;= 50, orders &gt;= 1) %&gt;%
+  pull(user_id)
+# filter for the corresponding orders
+good_orders &lt;- orders %&gt;%
+  filter(user_id %in% good_users)
+
+# count for every user the number of different items he bought
+product_by_customer_count &lt;- order_products %&gt;%
+  inner_join(select(good_orders, order_id, user_id)) %&gt;%
+  distinct(user_id, product_id) %&gt;%
+  count(product_id)
+
+# A considered product should have been bought by 
+# at least 0.1% of the customers
+product_threshold &lt;- length(unique(good_orders$user_id)) * 0.001
+
+good_products &lt;- product_by_customer_count %&gt;% 
+  filter(n &gt;= product_threshold) %&gt;%
+  pull(product_id)
+
+op &lt;- order_products %&gt;%
+  select(order_id, product_id) %&gt;%
+  inner_join(select(good_orders, order_id, user_id)) %&gt;%
+  filter(product_id %in% good_products)
+
+# as last step, exclude all orders with a basket size of 1
+op_size_one &lt;- op %&gt;% 
+  group_by(order_id) %&gt;%
+  summarize(basket_size = n()) %&gt;%
+  ungroup %&gt;% 
+  filter(basket_size == 1) %&gt;%
+  pull(order_id)
+
+op &lt;- op %&gt;% 
+  filter(!(order_id %in% op_size_one))</code></pre>
+<p>After this initial data cleaning, let’s see how many orders, users, and products we are dealing here:</p>
+<pre class="r"><code>length(unique(op$order_id))</code></pre>
+<pre><code>## [1] 2315386</code></pre>
+<pre class="r"><code>length(unique(op$user_id))</code></pre>
+<pre><code>## [1] 194760</code></pre>
+<pre class="r"><code>length(unique(op$product_id))</code></pre>
+<pre><code>## [1] 8979</code></pre>
+<p>So after dropping some customers and orders, we are left with about 200k users who bought about 9000 different products across 2.3 million orders. That should more than suffice to compute some PMI values.</p>
+</div>
+<div id="pointwise-mutual-information-for-instacart-products" class="section level3">
+<h3>Pointwise Mutual Information for Instacart Products</h3>
+<p>To compute the PMI value for every product, we first of all need to count how often products appear together. For the dataset at hand, the following expansion of the <code>order_products</code> table works fine (you should have quite some RAM though…); for every order, we join every product against every product in the order. This makes our table much longer, so depending on the average basket size and number of orders in another dataset, it might be a prohibitively expensive computation. We then immediately count how often products appear together:</p>
+<pre class="r"><code>op_pp &lt;- inner_join(op, op,
+                    by = c(order_id = &quot;order_id&quot;)) %&gt;%
+  count(product_id.x, product_id.y)</code></pre>
+<pre class="r"><code>dim(op_pp)</code></pre>
+<pre><code>## [1] 31708163        3</code></pre>
+<p>Next, we need to count how often every product appears in orders, generally. This is used to compute the probabilities <span class="math inline">\(p(x)\)</span> and <span class="math inline">\(p(c)\)</span>. We add these counts to the co-occurrence counts, and add the number of total orders in the <code>total_n</code> column. At this point we have all ingredients to compute the empirical probabilities and the PMIs.</p>
+<pre class="r"><code>product_count_train &lt;- op %&gt;%
+  count(product_id)
+
+pp_common_count &lt;- op_pp %&gt;%
+  inner_join(product_count_train, by = c(product_id.x = &quot;product_id&quot;)) %&gt;%
+  inner_join(product_count_train, by = c(product_id.y = &quot;product_id&quot;)) %&gt;%
+  rename(common_n = n.x, x_n = n.y, y_n = n) %&gt;%
+  # total number of orders considered
+  mutate(total_n = length(unique(op$order_id)))</code></pre>
+<p>Computing the PMI is now as simple as dividing columns and taking the logarithm. We add the corresponding product names to analyze the results afterwards.</p>
+<pre class="r"><code>pp_pmi &lt;- pp_common_count %&gt;%
+  mutate(common_freq = log(common_n / total_n),
+         x_freq = log(x_n / total_n),
+         y_freq = log((y_n / total_n)),
+         pmi = common_freq - x_freq - y_freq)
+
+pp_rec &lt;- pp_pmi %&gt;%
+  select(product_id.x, product_id.y, total_n, common_n, x_n, y_n, pmi) %&gt;%
+  left_join(select(products, product_id, product_name), 
+            by = c(product_id.x = &quot;product_id&quot;)) %&gt;%
+  left_join(select(products, product_id, product_name), 
+            by = c(product_id.y = &quot;product_id&quot;))</code></pre>
+</div>
+<div id="detailed-look-at-recommendations" class="section level3">
+<h3>Detailed Look at Recommendations</h3>
+<p>Given that we have not exactly fitted a model here, it’s not clear how to evaluate the results. We’re not explicitly optimizing for anything, so the following evaluation will be restricted to looking at some recommendations and judging whether the recommendations “make sense”.<a href="#fn1" class="footnoteRef" id="fnref1"><sup>1</sup></a></p>
+<p>Given the large sortiment, I had to pick some products at random to evaluate the recommendations. Also, I had to pick products that I actually know–I’m not living in the U.S., so what is <em>Glacier Freeze Frost</em>?</p>
+<p>For a start, let’s act as if we are about to add Spicy Avocado Hummus to the cart. What could I buy with hummus? Apparently a lot of other hummus, yogurt, as well as crackers or chips:</p>
+<pre class="r"><code>pp_rec %&gt;% 
+  filter(product_id.x == 5973, product_id.x != product_id.y) %&gt;%
+  arrange(-pmi) %&gt;%
+  top_n(10, pmi) %&gt;%
+  select(product_name.x, product_name.y, pmi, common_n, x_n, y_n) %&gt;%
+  knitr::kable(digits = 2)</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">product_name.x</th>
+<th align="left">product_name.y</th>
+<th align="right">pmi</th>
+<th align="right">common_n</th>
+<th align="right">x_n</th>
+<th align="right">y_n</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Spicy Avocado Hummus</td>
+<td align="left">Organic Jalapeno Cilantro Hummus</td>
+<td align="right">4.70</td>
+<td align="right">118</td>
+<td align="right">2541</td>
+<td align="right">982</td>
+</tr>
+<tr class="even">
+<td align="left">Spicy Avocado Hummus</td>
+<td align="left">Organic Kale Pesto Hummus</td>
+<td align="right">4.47</td>
+<td align="right">97</td>
+<td align="right">2541</td>
+<td align="right">1015</td>
+</tr>
+<tr class="odd">
+<td align="left">Spicy Avocado Hummus</td>
+<td align="left">Organic Thai Coconut Curry Hummus</td>
+<td align="right">4.32</td>
+<td align="right">78</td>
+<td align="right">2541</td>
+<td align="right">945</td>
+</tr>
+<tr class="even">
+<td align="left">Spicy Avocado Hummus</td>
+<td align="left">Organic Sriracha Hummus</td>
+<td align="right">4.31</td>
+<td align="right">144</td>
+<td align="right">2541</td>
+<td align="right">1762</td>
+</tr>
+<tr class="odd">
+<td align="left">Spicy Avocado Hummus</td>
+<td align="left">Hummus, Hope, Original Recipe</td>
+<td align="right">3.71</td>
+<td align="right">206</td>
+<td align="right">2541</td>
+<td align="right">4572</td>
+</tr>
+<tr class="even">
+<td align="left">Spicy Avocado Hummus</td>
+<td align="left">Total 2% Lowfat Greek Yogurt with Honey</td>
+<td align="right">3.12</td>
+<td align="right">12</td>
+<td align="right">2541</td>
+<td align="right">481</td>
+</tr>
+<tr class="odd">
+<td align="left">Spicy Avocado Hummus</td>
+<td align="left">Organic Jalapeno Crackers</td>
+<td align="right">3.11</td>
+<td align="right">12</td>
+<td align="right">2541</td>
+<td align="right">489</td>
+</tr>
+<tr class="even">
+<td align="left">Spicy Avocado Hummus</td>
+<td align="left">Chomperz Original Crunchy Seaweed Chips</td>
+<td align="right">3.09</td>
+<td align="right">17</td>
+<td align="right">2541</td>
+<td align="right">707</td>
+</tr>
+<tr class="odd">
+<td align="left">Spicy Avocado Hummus</td>
+<td align="left">Teriyaki Turkey Jerky</td>
+<td align="right">3.06</td>
+<td align="right">11</td>
+<td align="right">2541</td>
+<td align="right">472</td>
+</tr>
+<tr class="even">
+<td align="left">Spicy Avocado Hummus</td>
+<td align="left">Soft Toothbrush</td>
+<td align="right">3.03</td>
+<td align="right">9</td>
+<td align="right">2541</td>
+<td align="right">397</td>
+</tr>
+</tbody>
+</table>
+<p>Observe how we don’t have the <em>Hummus, Hope, Original Recipe</em> as the top recommended product even though the avocado hummus was bought most often with it. That is because the PMI takes into account how often the two products appear in orders independently. We see that the <em>Hummus, Hope, Original Recipe</em> is quite popular, which is why the 206 common orders are not as impactful as the 118 orders together with <em>Organic Jalapeno Cilantro Hummus</em> for the PMI. And so we want to rank the jalapeno hummus higher.</p>
+<p>Notice also how some recommendations are based on just 9, 11, 12, or 17 common orders. If we think about how many customers we have, 12 orders can be noise. The toothbrush, for example, does not look like a good recommendation. We will address this with a smoothing method in a minute.</p>
+<p>If we pick a different hummus, <em>Garlic Hummus</em>, we get very different results. There is no other hummus recommended, and instead the recommendations focus on pita bread. But notice again how the PMI favors products with a small number of common orders.</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">product_name.x</th>
+<th align="left">product_name.y</th>
+<th align="right">pmi</th>
+<th align="right">common_n</th>
+<th align="right">x_n</th>
+<th align="right">y_n</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Garlic Hummus</td>
+<td align="left">Whole Wheat Pita</td>
+<td align="right">2.76</td>
+<td align="right">23</td>
+<td align="right">6893</td>
+<td align="right">489</td>
+</tr>
+<tr class="even">
+<td align="left">Garlic Hummus</td>
+<td align="left">White Pita</td>
+<td align="right">2.75</td>
+<td align="right">71</td>
+<td align="right">6893</td>
+<td align="right">1518</td>
+</tr>
+<tr class="odd">
+<td align="left">Garlic Hummus</td>
+<td align="left">Peanut Butter Dark Chocolate Fruit &amp; Nut Protein Bars</td>
+<td align="right">2.62</td>
+<td align="right">15</td>
+<td align="right">6893</td>
+<td align="right">368</td>
+</tr>
+<tr class="even">
+<td align="left">Garlic Hummus</td>
+<td align="left">Gluten Free Black Bean and Quinoa Burrito</td>
+<td align="right">2.53</td>
+<td align="right">18</td>
+<td align="right">6893</td>
+<td align="right">480</td>
+</tr>
+<tr class="odd">
+<td align="left">Garlic Hummus</td>
+<td align="left">Organic Spinach &amp; Potatoes 2, 6 Months+</td>
+<td align="right">2.50</td>
+<td align="right">18</td>
+<td align="right">6893</td>
+<td align="right">495</td>
+</tr>
+<tr class="even">
+<td align="left">Garlic Hummus</td>
+<td align="left">Turkey Meatball Bites</td>
+<td align="right">2.50</td>
+<td align="right">13</td>
+<td align="right">6893</td>
+<td align="right">358</td>
+</tr>
+<tr class="odd">
+<td align="left">Garlic Hummus</td>
+<td align="left">100% Whole Wheat Hot Dog Buns</td>
+<td align="right">2.46</td>
+<td align="right">23</td>
+<td align="right">6893</td>
+<td align="right">659</td>
+</tr>
+<tr class="even">
+<td align="left">Garlic Hummus</td>
+<td align="left">Organic White Pita Bread</td>
+<td align="right">2.42</td>
+<td align="right">37</td>
+<td align="right">6893</td>
+<td align="right">1102</td>
+</tr>
+<tr class="odd">
+<td align="left">Garlic Hummus</td>
+<td align="left">Lotus Forbidden Rice Ramen</td>
+<td align="right">2.38</td>
+<td align="right">10</td>
+<td align="right">6893</td>
+<td align="right">312</td>
+</tr>
+<tr class="even">
+<td align="left">Garlic Hummus</td>
+<td align="left">Gochujang Fermented Garlic Chile Paste</td>
+<td align="right">2.20</td>
+<td align="right">7</td>
+<td align="right">6893</td>
+<td align="right">260</td>
+</tr>
+</tbody>
+</table>
+<p>Similarly, here are recommendations for products that go well with <em>Granny Smith Apples</em>.</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">product_name.x</th>
+<th align="left">product_name.y</th>
+<th align="right">pmi</th>
+<th align="right">common_n</th>
+<th align="right">x_n</th>
+<th align="right">y_n</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Granny Smith Apples</td>
+<td align="left">Royal Gala Apples</td>
+<td align="right">2.24</td>
+<td align="right">238</td>
+<td align="right">27712</td>
+<td align="right">2127</td>
+</tr>
+<tr class="even">
+<td align="left">Granny Smith Apples</td>
+<td align="left">Bag of Red Delicious Apples</td>
+<td align="right">2.00</td>
+<td align="right">74</td>
+<td align="right">27712</td>
+<td align="right">835</td>
+</tr>
+<tr class="odd">
+<td align="left">Granny Smith Apples</td>
+<td align="left">Seedless Grapes Green</td>
+<td align="right">1.98</td>
+<td align="right">34</td>
+<td align="right">27712</td>
+<td align="right">392</td>
+</tr>
+<tr class="even">
+<td align="left">Granny Smith Apples</td>
+<td align="left">Dark Chocolate Chili Almond Nuts &amp; Spices</td>
+<td align="right">1.96</td>
+<td align="right">34</td>
+<td align="right">27712</td>
+<td align="right">399</td>
+</tr>
+<tr class="odd">
+<td align="left">Granny Smith Apples</td>
+<td align="left">Outshine Lime Fruit Bars</td>
+<td align="right">1.95</td>
+<td align="right">55</td>
+<td align="right">27712</td>
+<td align="right">651</td>
+</tr>
+<tr class="even">
+<td align="left">Granny Smith Apples</td>
+<td align="left">Golden Delicious Apple</td>
+<td align="right">1.95</td>
+<td align="right">359</td>
+<td align="right">27712</td>
+<td align="right">4258</td>
+</tr>
+<tr class="odd">
+<td align="left">Granny Smith Apples</td>
+<td align="left">Braeburn Apple</td>
+<td align="right">1.93</td>
+<td align="right">126</td>
+<td align="right">27712</td>
+<td align="right">1523</td>
+</tr>
+<tr class="even">
+<td align="left">Granny Smith Apples</td>
+<td align="left">Garlic Parmesan Deli Style Pretzel Crisps</td>
+<td align="right">1.91</td>
+<td align="right">49</td>
+<td align="right">27712</td>
+<td align="right">606</td>
+</tr>
+<tr class="odd">
+<td align="left">Granny Smith Apples</td>
+<td align="left">Bag of Oranges</td>
+<td align="right">1.89</td>
+<td align="right">131</td>
+<td align="right">27712</td>
+<td align="right">1657</td>
+</tr>
+<tr class="even">
+<td align="left">Granny Smith Apples</td>
+<td align="left">Whole Frozen Strawberries</td>
+<td align="right">1.88</td>
+<td align="right">35</td>
+<td align="right">27712</td>
+<td align="right">445</td>
+</tr>
+</tbody>
+</table>
+<p>When you work yourself through a couple of examples, it might stand out to you that the PMI tends to favor products with a small probability, that is, rare products tend to be recommended more. This is not necessarily desired, in particular not from the standpoint of a business.</p>
+</div>
+<div id="context-distribution-smoothing" class="section level3">
+<h3>Context Distribution Smoothing</h3>
+<p>As explained in <a href="https://web.stanford.edu/~jurafsky/slp3/15.pdf">Jurafsky and Martin (2017)</a> citing <a href="http://www.aclweb.org/anthology/Q15-1016">Levy at al. (2015)</a>, a simple way to address this bias is context distribution smoothing, where the context probability is raised to the power of <span class="math inline">\(\alpha\)</span>, where <span class="math inline">\(\alpha \in (0,1)\)</span>. Since, for example, <span class="math inline">\(0.1^{0.75} \approx 0.1778\)</span>, doing so increases the probability of the context, and consequently decreases the PMI.</p>
+<p>While there is also an impact on events with larger probability, the effect on events with small probability can be more extreme as for example here, leading to a larger absolute discount of their PMI values:</p>
+<p><span class="math display">\[
+\log(0.25) - \log(0.5) - \log(0.3) \approx 0.511
+\]</span> <span class="math display">\[
+\log(0.01) - \log(0.5) - \log(0.01) \approx 0.693
+\]</span> <span class="math display">\[
+\log(0.25) - \log(0.5) - \log(0.3^{0.75}) \approx 0.210
+\]</span> <span class="math display">\[
+\log(0.01) - \log(0.5) - \log(0.01^{0.75}) \approx -0.458
+\]</span></p>
+<p>It also implies that everything that would have been perfectly independent previously does now become negatively associated:</p>
+<p><span class="math display">\[
+\log(0.25) - \log(0.5) - \log(0.5) = 0
+\]</span> <span class="math display">\[
+\log(0.25) - \log(0.5) - \log(0.5^{0.75}) \approx -0.173
+\]</span></p>
+<p>Setting this aside, the context distribution smoothing can help in many cases to make the top ranks more sensible by returning more mainstream results. We can add the exponent (here 0.75) and compare the results:</p>
+<pre class="r"><code>context_exponent &lt;- 0.75
+pp_pmi_smooth &lt;- pp_common_count %&gt;%
+  # smooth using the prior
+  mutate(common_freq = log(common_n / total_n),
+         x_freq = log(x_n / total_n),
+         y_freq = log((y_n / total_n)^context_exponent),
+         pmi = common_freq - x_freq - y_freq)
+
+pp_rec_smooth &lt;- pp_pmi_smooth %&gt;%
+  select(product_id.x, product_id.y, total_n, common_n, x_n, y_n, pmi) %&gt;%
+  left_join(select(products, product_id, product_name), 
+            by = c(product_id.x = &quot;product_id&quot;)) %&gt;%
+  left_join(select(products, product_id, product_name), 
+            by = c(product_id.y = &quot;product_id&quot;))</code></pre>
+<p>For the apples we can observe that the seedless grapes, the <em>Dark Chocolate Chili Almond Nuts &amp; Spices</em>, as well as <em>Outshine Lime Fruit Bars</em> have all been replaced by more apples, and the most frequently purchased item of them all: bananas.</p>
+<pre class="r"><code>pp_rec_smooth %&gt;%
+  filter(product_id.x == 9387, product_id.x != product_id.y) %&gt;%
+  arrange(-pmi) %&gt;%
+  select(product_name.x, product_name.y, pmi, common_n, x_n, y_n) %&gt;%
+  head(10) %&gt;%
+  knitr::kable(digits = 2)</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">product_name.x</th>
+<th align="left">product_name.y</th>
+<th align="right">pmi</th>
+<th align="right">common_n</th>
+<th align="right">x_n</th>
+<th align="right">y_n</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Granny Smith Apples</td>
+<td align="left">Royal Gala Apples</td>
+<td align="right">0.49</td>
+<td align="right">238</td>
+<td align="right">27712</td>
+<td align="right">2127</td>
+</tr>
+<tr class="even">
+<td align="left">Granny Smith Apples</td>
+<td align="left">Golden Delicious Apple</td>
+<td align="right">0.38</td>
+<td align="right">359</td>
+<td align="right">27712</td>
+<td align="right">4258</td>
+</tr>
+<tr class="odd">
+<td align="left">Granny Smith Apples</td>
+<td align="left">Gala Apples</td>
+<td align="right">0.37</td>
+<td align="right">1061</td>
+<td align="right">27712</td>
+<td align="right">18335</td>
+</tr>
+<tr class="even">
+<td align="left">Granny Smith Apples</td>
+<td align="left">Banana</td>
+<td align="right">0.25</td>
+<td align="right">8919</td>
+<td align="right">27712</td>
+<td align="right">365728</td>
+</tr>
+<tr class="odd">
+<td align="left">Granny Smith Apples</td>
+<td align="left">Red Delicious Apple</td>
+<td align="right">0.21</td>
+<td align="right">236</td>
+<td align="right">27712</td>
+<td align="right">3062</td>
+</tr>
+<tr class="even">
+<td align="left">Granny Smith Apples</td>
+<td align="left">Mandarins Bag</td>
+<td align="right">0.20</td>
+<td align="right">295</td>
+<td align="right">27712</td>
+<td align="right">4175</td>
+</tr>
+<tr class="odd">
+<td align="left">Granny Smith Apples</td>
+<td align="left">Bosc Pear</td>
+<td align="right">0.15</td>
+<td align="right">301</td>
+<td align="right">27712</td>
+<td align="right">4578</td>
+</tr>
+<tr class="even">
+<td align="left">Granny Smith Apples</td>
+<td align="left">Braeburn Apple</td>
+<td align="right">0.10</td>
+<td align="right">126</td>
+<td align="right">27712</td>
+<td align="right">1523</td>
+</tr>
+<tr class="odd">
+<td align="left">Granny Smith Apples</td>
+<td align="left">Bag of Oranges</td>
+<td align="right">0.08</td>
+<td align="right">131</td>
+<td align="right">27712</td>
+<td align="right">1657</td>
+</tr>
+<tr class="even">
+<td align="left">Granny Smith Apples</td>
+<td align="left">Organic Fuji Apple</td>
+<td align="right">0.08</td>
+<td align="right">2156</td>
+<td align="right">27712</td>
+<td align="right">69495</td>
+</tr>
+</tbody>
+</table>
+<p>We see a similar effect for the garlic hummus. Compared to the previous recommendations, we also observe that more of the recommended items now have larger <code>common_n</code> values, i.e., by introducing the smoothing, we have implicitly ensured that the ranking relies more on common purchases.</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">product_name.x</th>
+<th align="left">product_name.y</th>
+<th align="right">pmi</th>
+<th align="right">common_n</th>
+<th align="right">x_n</th>
+<th align="right">y_n</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Garlic Hummus</td>
+<td align="left">White Pita</td>
+<td align="right">0.92</td>
+<td align="right">71</td>
+<td align="right">6893</td>
+<td align="right">1518</td>
+</tr>
+<tr class="even">
+<td align="left">Garlic Hummus</td>
+<td align="left">Sea Salt Pita Chips</td>
+<td align="right">0.90</td>
+<td align="right">351</td>
+<td align="right">6893</td>
+<td align="right">13135</td>
+</tr>
+<tr class="odd">
+<td align="left">Garlic Hummus</td>
+<td align="left">Jalapeno Hummus</td>
+<td align="right">0.65</td>
+<td align="right">157</td>
+<td align="right">6893</td>
+<td align="right">6310</td>
+</tr>
+<tr class="even">
+<td align="left">Garlic Hummus</td>
+<td align="left">Whole Wheat Pita</td>
+<td align="right">0.64</td>
+<td align="right">23</td>
+<td align="right">6893</td>
+<td align="right">489</td>
+</tr>
+<tr class="odd">
+<td align="left">Garlic Hummus</td>
+<td align="left">Lemon Hummus</td>
+<td align="right">0.59</td>
+<td align="right">250</td>
+<td align="right">6893</td>
+<td align="right">12625</td>
+</tr>
+<tr class="even">
+<td align="left">Garlic Hummus</td>
+<td align="left">Organic White Pita Bread</td>
+<td align="right">0.51</td>
+<td align="right">37</td>
+<td align="right">6893</td>
+<td align="right">1102</td>
+</tr>
+<tr class="odd">
+<td align="left">Garlic Hummus</td>
+<td align="left">Pita Chips Simply Naked</td>
+<td align="right">0.48</td>
+<td align="right">175</td>
+<td align="right">6893</td>
+<td align="right">9110</td>
+</tr>
+<tr class="even">
+<td align="left">Garlic Hummus</td>
+<td align="left">Organic Peeled Whole Baby Carrots</td>
+<td align="right">0.44</td>
+<td align="right">532</td>
+<td align="right">6893</td>
+<td align="right">42519</td>
+</tr>
+<tr class="odd">
+<td align="left">Garlic Hummus</td>
+<td align="left">Peanut Butter Dark Chocolate Fruit &amp; Nut Protein Bars</td>
+<td align="right">0.43</td>
+<td align="right">15</td>
+<td align="right">6893</td>
+<td align="right">368</td>
+</tr>
+<tr class="even">
+<td align="left">Garlic Hummus</td>
+<td align="left">100% Whole Wheat Hot Dog Buns</td>
+<td align="right">0.42</td>
+<td align="right">23</td>
+<td align="right">6893</td>
+<td align="right">659</td>
+</tr>
+</tbody>
+</table>
+</div>
+<div id="why-pmi-and-not-common-order-count" class="section level3">
+<h3>Why PMI and not Common Order Count?</h3>
+<p>To quickly show the impact of using pointwise mutual information to rank the recommendations instead of the raw count of common orders, consider the following example. If we use the pointwise mutual information to get products that are bought together with Birthday Candles, we will get the following items as the top recommendations. The lighter is a natural complement, and everything else is to prepare the cake on which the candles are placed:</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">product_name.x</th>
+<th align="left">product_name.y</th>
+<th align="right">pmi</th>
+<th align="right">common_n</th>
+<th align="right">x_n</th>
+<th align="right">y_n</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Birthday Candles</td>
+<td align="left">Classic Lighters</td>
+<td align="right">2.69</td>
+<td align="right">4</td>
+<td align="right">208</td>
+<td align="right">331</td>
+</tr>
+<tr class="even">
+<td align="left">Birthday Candles</td>
+<td align="left">Super Moist Chocolate Fudge Cake Mix</td>
+<td align="right">2.63</td>
+<td align="right">4</td>
+<td align="right">208</td>
+<td align="right">360</td>
+</tr>
+<tr class="odd">
+<td align="left">Birthday Candles</td>
+<td align="left">Creamy Classic Vanilla Frosting</td>
+<td align="right">2.55</td>
+<td align="right">3</td>
+<td align="right">208</td>
+<td align="right">273</td>
+</tr>
+<tr class="even">
+<td align="left">Birthday Candles</td>
+<td align="left">Rich and Creamy Milk Chocolate Frosting</td>
+<td align="right">2.51</td>
+<td align="right">3</td>
+<td align="right">208</td>
+<td align="right">285</td>
+</tr>
+<tr class="odd">
+<td align="left">Birthday Candles</td>
+<td align="left">Funfetti Premium Cake Mix With Candy Bits</td>
+<td align="right">2.48</td>
+<td align="right">5</td>
+<td align="right">208</td>
+<td align="right">587</td>
+</tr>
+</tbody>
+</table>
+<p>If we instead rank by the absolute count of common purchases, the recommended products would be the generally frequently purchased bananas, strawberries, etc., just as I alluded to in the beginning. This just goes to show that the raw count is not an alternative to come up with product recommendations.</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">product_name.x</th>
+<th align="left">product_name.y</th>
+<th align="right">pmi</th>
+<th align="right">common_n</th>
+<th align="right">x_n</th>
+<th align="right">y_n</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Birthday Candles</td>
+<td align="left">Banana</td>
+<td align="right">-0.78</td>
+<td align="right">24</td>
+<td align="right">208</td>
+<td align="right">365728</td>
+</tr>
+<tr class="even">
+<td align="left">Birthday Candles</td>
+<td align="left">Organic Strawberries</td>
+<td align="right">-0.69</td>
+<td align="right">16</td>
+<td align="right">208</td>
+<td align="right">189410</td>
+</tr>
+<tr class="odd">
+<td align="left">Birthday Candles</td>
+<td align="left">Large Lemon</td>
+<td align="right">-0.74</td>
+<td align="right">11</td>
+<td align="right">208</td>
+<td align="right">122928</td>
+</tr>
+<tr class="even">
+<td align="left">Birthday Candles</td>
+<td align="left">Bag of Organic Bananas</td>
+<td align="right">-1.66</td>
+<td align="right">8</td>
+<td align="right">208</td>
+<td align="right">274515</td>
+</tr>
+<tr class="odd">
+<td align="left">Birthday Candles</td>
+<td align="left">Strawberries</td>
+<td align="right">-1.00</td>
+<td align="right">8</td>
+<td align="right">208</td>
+<td align="right">113606</td>
+</tr>
+</tbody>
+</table>
+</div>
+</div>
+<div id="closing-thoughts" class="section level2">
+<h2>Closing Thoughts</h2>
+<p>Recommendations based on pointwise mutual information alone are of course not perfect. It’s easy to find cases in which seemingly random products are recommended based on a few common orders. It’s difficult to filter these cases out by setting some threshold on the common orders; three common orders can produce good recommendations depending on the product (just consider the Birthday Candles example above).</p>
+<p>More, since we’re not training a model and optimizing a metric, there is no scalable way of evaluating the result. Without picking a few example products and comparing recommendations, it’s difficult to, for example, pick the optimal smoothing exponent.</p>
+<p>But the PMI ranking serves as excellent baseline solution. Given that only four columns have to be counted, the above recommendations can be written in a couple of lines of SQL. It doesn’t take more than a morning to go from no recommendations to a good solution. The PMI gives a lot of bang for the buck.</p>
+<p>Not only that, but the PMI is also a natural starting point for word embedding models. As indicated in the references below, one could for example extend the ranking here to a full product-product PMI matrix. This high dimensional matrix could then be reduced into a lower dimensional embedding using something as simple as singular value decomposition (see <a href="https://multithreaded.stitchfix.com/blog/2017/10/18/stop-using-word2vec/#back-4">Chris Moody’s “Stop Using word2vec”</a> post on the Stitchfix blog). A word embedding makes it easy to train other models, as for example a clustering to find groups of related products.</p>
+<p>In any case, take a look at the recommendations from the PMI ranking. I have published an interactive Shiny app which lets you select different products to simulate what could be presented on product display pages. The context smoothing parameter is adjustable as well. <a href="https://timradtke.shinyapps.io/instacart/">Try it out here</a>. And next time your company needs product recommendations, try this as a cheap and good baseline.</p>
+</div>
+<div id="references" class="section level2">
+<h2>References</h2>
+<p>The Instacart Online Grocery Shopping Dataset 2017. Accessed from <a href="https://www.instacart.com/datasets/grocery-shopping-2017" class="uri">https://www.instacart.com/datasets/grocery-shopping-2017</a> on May 2, 2018.</p>
+<p>Daniel Jurafsky and James H. Martin. <a href="https://web.stanford.edu/~jurafsky/slp3/15.pdf">Vector Semantics</a>. Book chapter in <em><a href="https://web.stanford.edu/~jurafsky/slp3/">Speech and Language Processing</a></em>. Draft of August 7, 2017.</p>
+<p>Omer Levy and Yoav Goldberg. <a href="https://papers.nips.cc/paper/5477-neural-word-embedding-as-implicit-matrix-factorization">Neural Word Embedding as Implicit Matrix Factorization</a>. In <em>Advances in Neural Information Processing Systems 27</em> (NIPS 2014).</p>
+<p>Omer Levy, Yoav Goldberg and Ido Dagan. <a href="http://www.aclweb.org/anthology/Q15-1016">Improving Distributional Similarity with Lessons Learned from Word Embeddings</a>. <em>Transactions of the Association for Computational Linguistics</em>, vol. 3, pp. 211–225, 2015.</p>
+<p>Chris Moody. <a href="https://multithreaded.stitchfix.com/blog/2017/10/18/stop-using-word2vec/#back-4">Stop Using word2vec</a>. Blog post in <em>Stitchfix’ MultiThreaded</em> blog.</p>
+<p>Tomas Mikolov, Ilya Sutskever, Kai Chen, Greg Corrado and Jeffrey Dean. <a href="https://arxiv.org/abs/1310.4546">Distributed Representations of Words and Phrases and their Compositionality</a>.</p>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p>An first alternative would be to compare recommendations we derive from this “training” against the product combinations that appear in a test set.<a href="#fnref1">↩</a></p></li>
+</ol>
+</div>

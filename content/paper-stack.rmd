@@ -1,0 +1,211 @@
+---
+title: Paper Stack
+author: Tim Radtke
+date: '`r Sys.Date()`' 
+slug: paper-stack
+---
+
+This file serves as a list of all papers I have come across that sound interesting enough to potentially read them eventually. Please note that I started the list in October 2020. As I only fill it up as I go, it does not reflect everything I have read, alas.
+
+Inspiration: [Cosma Shalizi's notebooks](http://bactra.org/notebooks/).
+
+format: authors, year, title, source, link, added_date, modified_date, tags
+
+## Have Read
+
+Steven L. Scott, Hal Varian (2013). **Predicting the Present with Bayesian Structural Time Series**. Google. 2020-10-04. 2020-10-04. statistics time_series bayesian forecasting paper
+
+Hagai Attias (). **Planning by Probabilistic Inference**. Microsoft. 2020-10-04. 2020-10-04. statistics reinforcement_learning optimal_control bayesian probabilistic_programming paper
+
+John Winn, Christopher M. Bishop, Thomas Diethe, John Guiver, Yordan Zaykov (2019). **Model-based Machine Learning**. http://mbmlbook.com. statistics probabilistic_programming machine_learning book
+
+Seung-Jean Kim, Kwangmoo Koh, Stephen Boyd, Dimitry Gorinevsky (). **l1 Trend Filtering**. SIAM Review. 2020-10-04. 2020-10-04. statistics time_series paper
+
+This paper has strong relation to Sean J. Taylor and Benjamin Letham's trend model implemented in the [Prophet package](https://github.com/facebook/prophet) and described in the accompanying paper [Forecasting at Scale](https://peerj.com/preprints/3190/).
+
+Sean J. Taylor, Benjamin Letham (2017). **Forecasting at Scale**. https://peerj.com/preprints/3190/. 2020-10-04. 2020-10-04. statistics time_series forecasting bayesian probabilistic programming stan r python paper
+
+Souhaib Ben Taieb, James W. Taylor, Rob J. Hyndman (2017). **Coherent Probabilistic Forecasts for Hierarchical Time Series**. International Conference on Machine Learning. 2020-10-04. 2020-10-04. statistics time_series forecasting copula hierarchical probabilistic paper
+
+The authors use copulas to enable the estimation of a joint distribution from the marginal distributions available from bottom-up forecasts. 
+
+Marta Banbura, Domenico Giannone, Michele Lenza (2014). **Conditional Forecasts and Scenario Analysis with Vector Autoregressions for Large Cross-Sections**. European Central Bank Working Paper. 2020-10-07. 2020-10-07. time_series statistics econometric optimal_control paper
+
+This one got me interested in the idea of applying optimal control or reinforcement learning methods to monetary policy decisions, especially in the way suggested by Attias' "Planning by Probabilistic Inference". It's all about finding optimal policies.
+
+Marcelo Hartmann, Georgi Agiashvili, Paul Bürkner & Arto Klami (2020). **Flexible Prior Elicitation via the Prior Predictive Distribution**. arXiv:2002.09868. 2020-10-08. 2020-10-08. bayesian prior_elicitation probabilistic_programming statistics paper
+
+Ruben Crevits, Christophe Croux (2016). **Forecasting using robust exponential smoothing with damped trend and seasonal components**. KU Leuven Working Paper. 2020-10-08. 2020-10-08. time_series forecast robust statistics paper
+
+Dhruv Madeka, Lucas Swiniarski, Dean Foster, Leo Razoumov, Kari Torkkola, Ruofeng Wen (2018). **Sample Path Generation for Probabilistic Demand Forecasting**. MiLeTS 2018. 2020-10-08. 2020-10-08. time_series probabilistic demand_forecasting forecasting paper
+
+Jessica Hullman, Andrew Gelman (2020). **Interactive Analysis Needs Theories of Inference**. http://www.stat.columbia.edu/~gelman/research/unpublished/EDA_theories_of_inference.pdf. 2020-10-25. 2020-10-25. statistics data_visualization data_analysis prior_elicitation model_checking multiple_comparisons paper
+
+## To Read
+
+Veronica J. Berrocal, Adrian E. Raftery, Tilmann Gneiting, and Richard C. Steed (2010). **Probabilistic Weather Forecasting for Winter Road Maintenance**. Journal of the American Statistical Association. 2020-10-04. 2020-10-04. statistics probabilistic forecasting time_series application copula optimal_control paper
+
+Zad Rafi, Sander Greenland (2020). **Semantic and cognitive tools to aid statistical science: replace confidence and significance by compatibility and surprise**. BMC Medical Research Methodology. 2020-10-04. 2020-10-04. statistics frequentist paper
+
+Alexander Dokumentov, Rob J. Hyndman (2013). **Two-dimensional smoothing of mortality rates**. Monash University Working Paper. 2020-10-04. 2020-10-04. statistics time_series forecasting paper
+
+Alexander Dokumentov, Rob J. Hyndman (2014). **Low-dimensional decomposition, smoothing and forecasting of sparse functional data**. Monash University Working Paper. 2020-10-04. 2020-10-04. statistics time_series functional forecasting paper
+
+William R. Bell, Donald E. K. Martin. **Modeling Time-Varying Trading-Day Effects in Monthly Time Series**. U.S. Census Bureau. 2020-10-04. 2020-10-04. statistics time_series paper
+
+Drew A. Linzer (2013). **Dynamic Bayesian Forecasting of Presidential Elections in the States**. Journal of the American Statistical Association. 2020-10-04. 2020-10-04. statistics forecasting bayesian paper
+
+This paper is the foundation for Slate's presidential election forecast model. 
+
+Anindya Roy, Tucker S. McElroy, Peter Linton (2014). **Estimation of Causal Invertible VARMA Models**. U.S. Census Bureau. arXiv:1406.4584. 2020-10-04. 2020-10-04. statistics time_series paper
+
+R.E. Kalman (1960). **A New Approach to Linear Filtering and Prediction Problems**. Transactions of the ASME, Journal of Basic Engineering. time_series statistics forecasting paper
+
+Brendan O'Donoghue, Ian Osband, Catalin Ionescu (2020). **Making Sense of Reinforcement Learning and Probabilistic Infernece**. International Confernce on Learning Representations. arXiv:2001.00805. 2020-10-04. 2020-10-04. reinforcement_learning optimal_control probabilistic statistics paper
+
+If I remember Osband's Twitter thread correctly, this paper is a critical view of, among others, Levine's "Reinforcement Learning and Control as Probabilistic Inference: Tutorial and Review".
+
+Sergey Levine (2018). **Reinforcement Learning and Control as Probabilistic Inference: Tutorial and Review**. UC Berkeley. arXiv:1805.00909. 2020-10-04. 2020-10-04. reinforcement_learning optimal_control probabilistic statistics paper
+
+Jan-Willem van de Meent, Brooks Paige, Hongseok Yang, Frank Wood (2018). **An Introduction to Probabilistic Programming**. arXiv:1809.10756. 2020-10-04. 2020-10-04. statistics computer_science probabilistic_programming bayesian paper
+
+Andrew Gelman, Christian Hennig (2017). **Beyond subjective and objective in statistics**. The Royal Statistical Society. 2020-10-04. 2020-10-04. statistics bayesian frequentist paper
+
+Yea-Seul Kim, Paula Kayongo, Madeleine Grunde-McLaughlin, Jessica Hullman (2020). **Bayesian-Assisted Inference from Visualized Data**. arXiv:2008.00142. 2020-10-04. 2020-10-04. bayesian uncertainty_visualization data_visualization uncertainty_communication statistics paper
+
+Tilmann Gneiting, Matthias Katzfuss (2014). **Probabilistic Forecasting**. Annual Review of Statistics and Its Application. 2020-10-04. 2020-10-04. probabilistic time_series forecasting statistics paper
+
+Tilmann Gneiting, Adrian E. Raftery (2007). **Strictly Proper Scoring Rules, Prediction, and Estimation**. Journal of the American Statistical Association. 2020-10-04. 2020-10-04. probabilistic forecasting evaluation statistics paper
+
+Roman Schefzik, Thordis L. Thorarinsdottir, Tilmann Gneiting (2013). **Uncertainty Quantification in Complex Simulation Models Using Ensemble Copula Coupling**. Statistical Science. arXiv:1302.7149. 2020-10-04. 2020-10-04. copula statistics simulation time_series optimal_control paper
+
+This paper applies its methods to the problem of weather and climate predictions.
+
+Tilmann Gneiting (2009). **Making and Evaluating Point Forecasts**. arXiv:0912.0902. 2020-10-04. 2020-10-04. time_series forecasting evaluation paper
+
+Claire Vernade, Olivier Cappé, Vianney Perchet (2017). **Stochastic Bandit Models for Delayed Conversions**. arXiv:1706.09186. 2020-10-04. 2020-10-04. multi_armed_bandits statistics machine_learning paper
+
+David J. Spiegelhalter (1986). **Probabilistic prediction in patient management and clinical trials**. Statistics in Medicine. https://doi.org/10.1002/sim.4780050506. 2020-10-04. 2020-10-04. statistics healthcare clinical_trials probabilistic bayesian paper
+
+Anne Marthe van der Bles, Sander van der Linden, Alexandra L. J. Freeman, James Mitchell, Ana B. Galvao, Lisa Zaval, David J. Spiegelhalter (2019). **Communicating uncertainty about facts, numbers and science**. Royal Society Open Science. https://doi.org/10.1098/rsos.181870. 2020-10-04. 2020-10-04. statistics uncertainty_communication paper
+
+Bo Peng, Jiayu Li, Selahattin Akkas,
+Fugang Wang, Takuya Araki, Ohno Yoshiyuki, Judy Qiu (2020). **Rank Position Forecasting in Car Racing**. arXiv:2010.01707. 2020-10-07. 2020-10-07. forecasting formula1 machine_learning paper
+
+Zhijie Deng, Xiao Yang, Hao Zhang, Yinpeng Dong, Jun Zhu (2020). **BayesAdapter: Being Bayesian, Inexpensively and Robustly via Bayesian Fine-Tuning**. arXiv:2010.01979. 2020-10-07. 2020-10-07. bayesian neural_networks machine_learning variational_inference paper
+
+Jinwen Qiu, S. Rao Jammalamadaka, Ning Ning (2018). **Multivariate Bayesian Structural Time Series Model**. Journal of Machine Learning Research. 2020-10-07. 2020-10-07. bayesian time_series statistics paper.
+
+Ning Ning (2020). **Multivariate Quantile Bayesian Structural Time Series (MQBSTS) Model**. arXiv:2010.01654. 2020-10-07. 2020-10-07. bayesian forecasting time_series quantile_forecasts statistics paper
+
+Nadja Klein, Michael Stanley Smith, David J. Nott (2020). **Deep Distributional Time Series Models and the Probabilistic Forecasting of Intraday Electricity Prices**. arXiv:2010.01844. 2020-10-07. 2020-10-07. forecasting electricity_forecasting neural_networks machine_learning probabilistic paper
+
+Hédi Hadiji, Sébastien Gerchinovitz, Jean-Michel Loubes, Gilles Stoltz (2020). **Diversity-Preserving K–Armed Bandits, Revisited**. arXiv:2010.01874. 2020-10-07. 2020-10-07. multi_armed_bandits statistics machine_learning paper
+
+SeungKee Jeon (2020). **1st Place Solution to Google Landmark Retrieval 2020**. arXiv:2009.05132. 2020-10-07. 2020-10-07. google kaggle machine_learning computer_vision transfer_learning paper
+
+Alexander K. Lew, Monica Agrawal, David Sontag, Vikash K. Mansinghka (2020). **PClean: Bayesian Data Cleaning at Scale with Domain-Specific Probabilistic Programming**. arXiv:2007.11838. 2020-10-07. 2020-10-07. probabilistic_programming bayesian statistics computer_science paper
+
+Sayani Gupta, Rob J Hyndman, Dianne Cook, Antony Unwin (2020). **Visualizing probability distributions across bivariate cyclic temporal granularities**. arXiv:2010.0079. 2020-10-07. 2020-10-07. time_series data_visualization paper
+
+Urvashi Khandelwal, Angela Fan, Dan Jurafsky, Luke Zettlemoyer, Mike Lewis (2020). **Nearest Neighbor Machine Translation**. arXiv:2010.00710. 2020-10-07. 2020-10-07. natural_language_processing machine_learning paper
+
+Thomas G. Dietterich (1997). **Approximate Statistical Tests for Comparing Supervised Classification Learning Algorithms**. ?. 2020-10-07. 2020-10-07. machine_learning statistics evaluation paper
+
+Mike West (2019). **Bayesian Forecasting of Multivariate Time Series: Scalability, Structure Uncertainty and Decisions**. arXiv:1911.09656. 2020-10-07. 2020-10-07. bayesian statistics time_series paper
+
+James H. Stock, Mark W. Watson (2010). **Dynamic Factor Models**. Oxford Handbook of Economic Forecasting. 2020-10-07. 2020-10-07. time_series statistics econometrics paper
+
+Robert B. Litterman (1984). **Foreasting and Policy Analysis With Bayesian Vector Autoregression Models**. Federal Reserve Bank of Minneapolis Quaterly Review. ?. 2020-10-07. 2020-10-07. time_series econometrics macroeconomics monetary_policy paper
+
+Christopher A. Sims (1993). **A Nine-Variable Probabilistic Macroeconomic Forecasting Model**. http://www.nber.org/chapters/c7192. 2020-10-07. 2020-10-07. time_series econometrics macroeconomics paper
+
+Stock and Watson are the editors of this NBER volume.
+
+Tor Jacobson, Per Jansson, Anders Vredin, Anders Warne (1999). **A VAR Model for Monetary Policy Analysis in a Small Open Economy**. ?. 2020-10-07. 2020-10-07. time_series macroeconomics econometrics paper
+
+Andrew Levin, Volker Wieland, John C. Williams (2001). **The Performance of Forecast-Based Monetary Policy Rules under Model Uncertainty**. ?. 2020-10-07. 2020-10-07. time_series macroeconomics econometrics optimal_control monetary_policy paper
+
+A. Hakan Kara (2004). **Optimal Monetary Policy, Commitment, and Imperfect Credibility**. Central Bank Review, Central Bank of the Republic of Turkey. 2020-10-07. 2020-10-07. monetary_policy optimal_control macroeconomics paper
+
+Vitor Gaspar, Frank Smets, and David Vestin (2011). **Inflation Expectations, Adaptive Learning and Optimal Monetary Policy**. Handbook of Monetary Economics, Volume 3B. 2020-10-07. 2020-10-07. monetary_policy optimal_control macroeconomics paper
+
+Ben S. Bernanke, Jean Boivin, Piotr Eliasz (2005). **Measuring the Effects of Monetary Policy - A Factor-Augmented Vector Autoregressive (FAVAR) Approach**. The Quarterly Journal of Economics. 2020-07-01. 2020-07-01. monetary_policy time_series econometrics macroeconomics paper
+
+Athanasios Orphanides, John C. Williams (2008). **Learning, Expectations Formation, and the Pitfalls of Optimal Control Monetary Policy**. ?. 2020-10-07. 2020-10-07. optimal_control monetary_policy macroeconomics paper
+
+Juan F. Rubio-Ramírez, Daniel F. Waggoner, Tao Zha (2008). **Structural Vector Autoregressions: Theory of Identification and Algorithms for Inference**. Federal Reserve Bank of Atlanta Working Paper. 2020-07-01. 2020-07-01. time_series econometrics paper.
+
+Gary Koop, Dimitris Korobilis (2009). **Bayesian Multivariate Time Series Methods for Empirical Macroeconomics**. Foundations and Trends in Econometrics. 2020-10-07. 2020-10-07. time_series econometrics macroeconomics paper
+
+Todd E. Clark, Michael W. McCracken (2015). **Evaluating Conditional Forecasts from Vector Autoregressions**. http://research.stlouisfed.org/wp/2014/2014-025.pdf. 2020-10-07. 2020-10-07. time_series econometrics paper
+
+Daniel F. Waggoner, Tao Zha (1998). **Conditional Forecasts in Dynamic Multivariate Models**. Federal Reserve Bank of Atlanta Working Paper. 2020-10-07. 2020-10-07. time_series econometrics paper
+
+Helmut Lütkepohl (2005). **New Introduction to Multiple Time Series Analysis**. Springer. 2020-10-07. 2020-10-07. time_series statistics econometrics book
+
+Sarah E. Heaps (2020). **Enforcing stationarity through the prior in vector autoregressions**. arXiv:2004.09455. 2020-07-01. 2020-07-01. time_series statistics bayesian stan probabilistic_programming paper
+
+Heaps presented her paper at StanCon 2020.
+
+Benjamin Recht (2018). **A Tour of Reinforcement Learning: The View from Continuous Control**. arXiv:1806.09460. 2020-10-07. 2020-10-07. reinforcement_learning optimal_control review paper
+
+Attended Recht's related tutorial at ICML 2018.
+
+Berk Ustun, Cynthia Rudin (2019). **Learning Optimized Risk Scores**. Journal of Machine Learning Research. 2020-10-07. 2020-10-07. machine_learning constrained_optimization mixed_integer_nonlinear_program interpretable paper
+
+"We developed methods that let domain experts to specify constraints on model form and predictions, and that inform customization by telling them how their constraints affect performance"
+
+Konstantin Mishchenko, Mallory Montgomery, Federico Vaggi (2019). **A Self-supervised Approach to Hierarchical Forecasting with Applications to Groupwise Synthetic Controls**. arXiv:1906.10586. 2020-10-07. 2020-10-07. synthetic_control causal_inference time_series hierarchical forecasting statistics paper
+
+Zhengfan Wang, Miranda J. Fix, Lucia Hug, Anu Mishra, Danzhen You, Hannah Blencowe, Jon Wakefield, Leontine Alkema (2020). **Estimating the Stillbirth Rate for 195 Countries Using a Bayesian Sparse Regression Model with Temporal Smoothing**. arXiv:2010.0355. 2020-10-08. 2020-10-08. bayesian hierarchical time_series stillbirth horseshoe application statistics paper 
+
+Amanda Gentzel, Justin Clarke, David Jensen (2020). **Using Experimental Data to Evaluate Methods for Observational Causal Inference**. arXiv:2010.0305. 2020-10-08. 2020-10-08. statistics causal_inference observational_studies
+
+Zachary C. Lipton (2017). **The Mythos of Model Interpretability**. arXiv:1606.03490. 2020-10-12. 2020-10-12. machine_learning interpretability explainable_ai paper
+
+Tony Duan, Anand Avati, Daisy Yi Ding, Sanjay Basu, Andrew Ng, Alejandro Schuler (2020). **NGBoost: Natural Gradient Boosting for Probabilistic Prediction**. arXiv:1910.03225. 2020-10-12. 2020-10-12. machine_learning gradient_boosting probabilistic ngboost paper
+
+Eric Zelikman, Sharon Zhou, Jeremy Irvin, Cooper Raterink, Hao Sheng, Jack Kelly, Ram Rajagopal, Andrew Y. Ng, David Gagne (2020). **Short-Term Solar Irradiance Forecasting Using Calibrated Probabilistic Models**. arXiv:2010.04715. 2020-10-12. 2020-10-12. machine_learning forecasting solar_irridiance probabilistic ngboost gradient_boosting application paper
+
+Ramu Ramanathan, Robert Engle, Clive W.J.Granger, Farshid Vahid-Araghi, Casey Brace (1997). **Short-run forecasts of electricity loads and peaks**. International Journal of Forecasting. https://doi.org/10.1016/S0169-2070(97)00015-0. 2020-10-17. 2020-10-17. forecast time_series granger engle electricity paper
+
+V. Dordonnata, S.J. Koopman, M. Ooms, A. Dessertaine, J. Collet (2008). **An Hourly Periodic State Space Model for Modelling French National Electricity Load**. Tinbergen Institute Discussion Paper. https://papers.tinbergen.nl/08008.pdf. 2020-10-17. 2020-10-17. forecast time_series state_space_model electricity paper
+
+A.E. Clements, A.S. Hurn, Z. Li (2014). **Forecasting day-ahead electricity load using a multiple equation time series approach**. NCER Working Paper Series. http://www.ncer.edu.au/papers/documents/WP103R.pdf. 2020-10-17. 2020-10-17. forecast time_series electricity seemingly_unrelated_regression paper
+
+Souhaib Ben Taieb, Rob J Hyndman (2013). **A gradient boosting approach to the Kaggle load forecasting competition**. Preprint submitted to International Journal of Forecasting. https://robjhyndman.com/papers/kaggle-competition.pdf. 2020-10-17. 2020-10-17. forecast time_series kaggle gradient_boosting electricity paper
+
+Souhaib Ben Taieb, Rob J Hyndman (2014). **Boosting multi-step autoregressive forecasts**. Proceedings of the 31st International Conference on Machine Learning. http://proceedings.mlr.press/v32/taieb14.pdf. 2020-10-17. 2020-10-17. forecast time_series gradient_boosting paper
+
+Alon Jacovi, Ana Marasović, Tim Miller, Yoav Goldberg (2020). **Formalizing Trust in Artificial Intelligence: Prerequisites, Causes and Goals of Human Trust in AI**. arXiv:2010.07487. 2020-10-17. 2020-10-17. 
+
+Mitsuru Igami (2020). **Artificial intelligence as structural estimation: Deep Blue, Bonanza, and AlphaGo**. Econometrics Journal, doi: 10.1093/ectj/utaa005. 2020-10-19. 2020-10-19. ai econometrics structural_estimation dynamic_structural_estimation reinforcement_learning dynamic_programming paper
+
+Abhraneel Sarma, Matthew Kay (2020). **Prior Setting in Practice: Strategies and Rationales Used in Choosing Prior Distributions for Bayesian Analysis**. CHI'20. 2020-10-25. 2020-10-25. bayesian_inference prior_distribution paper
+
+Xiaoying Pu, Matthew Kay (2018). **The Garden of Forking Paths in Visualization: A Design Space for Reliable Exploratory Visual Analytics**. 2020-10-25. 2020-10-25. bayesian_inference multiple_comparisons statistics data_analysis paper
+
+Andrew Gelman, Xiao-Li Meng, Hal Stern (1996). **Posterior Predictive Assessment of Model Fitness via Realized Discrepancies**. Statistica Sinica 6(1996), 733-807. 2020-10-25. 2020-10-25. bayesian_inference model_checking statistics paper
+
+Andrew Gelman, Erik Loken (). **The Statistical Crisis in Science**. American Scientist, Volume 102. 2020-10-25. 2020-10-25. multiple_comparisons statistics paper
+
+Andrew Gelman, Erik Loken (2013). **The garden of forking paths: Why multiple comparisons can be a problem, even when there is no “fishing expedition” or “p-hacking” and the research hypothesis was posited ahead of time**. 2020-10-25. 2020-10-25. multiple_comparisons statistics paper
+
+Andrew Gelman, Jennifer Hill, Masanao Yajima (2012). **Why We (Usually) Don’t Have to Worry About Multiple Comparisons**. Journal of Research on Educational Effectiveness, 5: 189–211, 2012. 2020-10-25. 2020-10-25. bayesian_inference multiple_comparisons statistics paper
+
+Andrew Gelman, Guido Imbens (2013). **Why ask why? Forward causal inference and reverse causal questions**. 2020-10-25. 2020-10-25. causal_inference statistics econometrics paper
+
+Andrew Gelman, Thomas Basbøll (2014). **When do stories work? Evidence and illustration in the social sciences**. Sociological Methods and Research. 2020-10-25. 2020-10-25. 
+
+Andrew Gelman (2003). **A Bayesian Formulation of Exploratory Data Analysis and Goodness-of-Fit Testing**.
+
+Andrew Gelman (2004). **Exploratory Data Analysis for Complex Models**. Journal of Computational and Graphical Statistics, Volume 13, Number 4, Pages 755–779. 2020-10-25. 2020-10-25. data_analysis statistics paper
+
+Andrew Gelman, Yuling Yao (2020). **Holes in Bayesian Statistics**. 2020-10-25. 2020-10-25. bayesian_statistics statistics paper
+
+Emanuel Zgraggen, Zheguang Zhao, Robert Zeleznik, Tim Kraska (2018). **Investigating the Effect of the Multiple Comparisons Problem in Visual Analysis**. CHI'18. 2020-10-25. 2020-10-25.
+
+Macartan Humphreys, Raul Sanchez de la Sierra, Peter van der Windt (2013). **Fishing, Commitment, and Communication: A Proposal for Comprehensive Nonbinding Research Registration**. Political Analysis 21:1–20 doi:10.1093/pan/mps021. 2020-10-23. 2020-10-23. 
+
+<hr/>

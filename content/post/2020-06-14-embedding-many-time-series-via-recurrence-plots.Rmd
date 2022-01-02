@@ -1,0 +1,331 @@
+---
+title: Embedding Many Time Series via Recurrence Plots
+author: Tim Radtke
+date: '2020-06-14'
+slug: embedding-many-time-series-via-recurrence-plots
+categories:
+  - forecasting
+tags:
+  - time series
+  - umap
+  - hdbscan
+  - embedding
+  - machine learning
+---
+
+```{r, eval = TRUE, echo = FALSE, warning = FALSE, message = FALSE}
+library(dplyr)
+library(recur)
+library(ggplot2)
+library(ggmap)
+```
+
+*We demonstrate how recurrence plots can be used to embed a large set of time series via UMAP and HDBSCAN to quickly identify groups of series with unique characteristics such as seasonality or outliers. The approach supports exploratory analysis of time series via visualization that scales poorly when combined with large sets of related time series. We show how it works using a Walmart dataset of sales and a Citi Bike dataset of bike rides.*
+
+Traditional time series courses act as if we had plenty of time to take care of time series individually, one after another. In reality, though, we're often faced with a large set of time series---too large to look at each time series yet alone to check them repeatedly. This conflicts with the value that comes from visualizing time series to understand how they might need to be modeled. Randomly picking time series from the larger set is one way to deal with this issue. But I've also come to appreciate the following combination of tricks to quickly become aware of broader patterns and issues in a given set of data.
+
+## Recurrence Plots
+
+Recurrence plots are not a new idea but I only became aware of them through the recent paper by [Lia et al. (2020)](https://arxiv.org/abs/1904.08064) who build on top of the original description by [Eckmann et al. (1987)](https://iopscience.iop.org/article/10.1209/0295-5075/4/9/004). Given a time series with observations $y_1, ..., y_T$, the authors check for each combination of two observations $i$ and $j$ with $i < j$ whether $|y_j - y_i| < \epsilon$ with $\epsilon > 0$. If this holds, then the observation has *recurred*. 
+
+Given that many important patterns in time series can be described by how similar two points in the time series are to each other, plotting this recurrence information can be helpful to spot said patterns.
+
+I suppose that the binary measure was used in 1987 as it was easier to print a graph in black-and-white rather than shades of color. Nowadays though, we can look at the continuous version of the (absolute) difference between two points. Using all combinations of $i$ and $j$, we get following square recurrence plots:
+
+```{r, echo = FALSE, fig.height = 4}
+example_data <- data.frame(
+  id = rep(c("White Noise", "Sine Wave", "Exponential Trend"), each = 48),
+  date = rep(seq(as.Date("2016-01-01"), as.Date("2019-12-01"), by = "month"),
+             3),
+  value = c(
+    rnorm(48),
+    sinpi(1:48 / 6),
+    exp(1:48 / 12)
+  )
+)
+
+example_recurrence <- recur::measure(example_data, absolute = TRUE, 
+               size = "square", shape = "long")
+
+example_recurrence$recurrence_table %>%
+  mutate(date_x = as.character(date_x),
+         date_y = as.character(date_y)) %>%
+ggplot() +
+  geom_raster(aes(x = date_x, y = date_y, fill = recurrence)) +
+  facet_wrap(~id) +
+  theme(legend.position = "bottom",
+        axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
+```
+
+Real time series, of course, do not have patterns this clean. This makes it difficult to draw conclusions from these graphs when they resemble the one on the right rather than the two on the left. Lia et al. (2020) thus took to Convolutional Neural Networks to analyze a large set of time series via recurrence plots.
+
+Lia et al. (2020) had a specific task that needed solving. However, when it comes to exploration of the data set only, [UMAP](https://umap-learn.readthedocs.io/) is a favorite of mine. Similarly to how [UMAP can embed the MNIST dataset](https://minimizeregret.com/post/2020/04/26/are-you-sure-this-embedding-is-good-enough/), we can run UMAP on recurrence plots of many time series to project each time series onto a two-dimensional space. In this representation, time series with similar recurrence plots should be clustered and spotting commonalities among them becomes easier.
+
+## UMAP on Recurrence Plots
+
+To explore the usefulness of recurrence plots combined with UMAP, we consider two freely available data sets of many time series: 1) [Daily number of rides starting from Citi Bike stations in New York](https://s3.amazonaws.com/tripdata/index.html), and 2) [daily sales of products at 10 different Walmart locations in the US](https://www.kaggle.com/c/m5-forecasting-accuracy).
+
+Both datasets consist of daily observations. Here, however, we load them aggregated to monthly values (`date` is formatted as `YYYY-MM-01`). The reason for this is mostly that the recurrence plots create large datasets: What previously was a time series of $N$ observations turns into at least $N^2/2$ observations. This is a major drawback to consider---especially when going beyond a single series.
+
+```{r, echo = FALSE, message = FALSE}
+citibike <- readr::read_csv("/Users/timradtke/Dropbox/1DataAnalyses/citibike/citibike_monthly.csv")
+
+locations <- readRDS("/Users/timradtke/Dropbox/1DataAnalyses/citibike/start_station_location_201712.rds")
+
+
+walmart <- readr::read_csv("/Users/timradtke/Dropbox/1DataAnalyses/wal/data-processed/walmart_subset_monthly.csv")
+```
+
+```{r}
+glimpse(citibike)
+glimpse(walmart)
+```
+
+Note that for both datasets the observations are non-negative counts. This is what a randomly picked time series from the `citibike` dataset looks like:
+
+```{r, echo = FALSE, fig.height = 3}
+set.seed(4729)
+
+tmp_id <- sample(unique(citibike$id), 1)
+
+citibike[citibike$id == tmp_id,] %>%
+  ggplot(aes(x = date, y = value)) +
+  geom_line(color = "grey") +
+  geom_point() +
+  labs(x = "Month", y = "Rides",
+       title = paste0("Monthly Rides Starting at Citibike Station ",
+                      tmp_id))
+```
+
+And this is what sales for a randomly picked product at Walmart look like:
+
+```{r, echo = FALSE, fig.height = 3}
+tmp_id <- sample(unique(walmart$id), 1)
+
+walmart[walmart$id == tmp_id,] %>%
+  ggplot(aes(x = date, y = value)) +
+  geom_line(color = "grey") +
+  geom_point() +
+  labs(x = "Month", y = "Sales",
+       title = paste0("Monthly Sales of ",
+                      tmp_id))
+```
+
+The latter time series of Walmart highlight another detail that needs to be considered when using recurrence plots the way I do: Since we want to feed every pixel of the recurrence plot as a feature to UMAP, we need the same number of pixels for each time series. To achieve this when new Citi Bike stations are added over time and products are launched or discontinued at Walmart, I pad each time series with zeros as needed. At least in the case of count time series the zero is a natural choice. However, we will see in the following that even in this case the padding does have a strong impact on the results.
+
+To run the analysis, we first need to compute the recurrence plots for each time series of the dataset. We start by analyzing the Walmart dataset.
+
+### UMAP and Recurrence Plots for Walmart Sales
+
+*In the following, I use a few convenience functions [shared as tiny R package `recur` on Github](https://github.com/timradtke/recur). They wrap in part functions from the `umap` and `hdbscan` package which do the actual work.*
+
+We take the dataset and compute the recurrence plot for each product. The [`recur::measure()`](https://github.com/timradtke/recur/blob/master/R/measure.R) function does exactly this. Here, we return the recurrence pixels in a long table after having computed the full $N \times N$ matrix. Before computing the recurrence values, it min-max standardizes all values for each time series to values between 0 and 1.
+
+```{r}
+walmart_recur <- recur::measure(walmart, shape = "long", size = "square")
+```
+
+The recurrence plot of the product shown above looks as follows, with a large area reserved for the initial zero padding. The area with recurrence of points after the product started selling appears without obvious pattern and is limited to less than a quarter of the pixels.
+
+```{r, echo = FALSE, fig.height = 4}
+walmart_recur$recurrence_table %>%
+  filter(id == tmp_id) %>%
+  mutate(date_x = as.character(date_x),
+         date_y = as.character(date_y)) %>%
+  ggplot() +
+  geom_raster(aes(x = date_x, y = date_y, fill = recurrence)) +
+  facet_wrap(~id) +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
+```
+
+With the recurrence pixels for each time series in hand, we can pass them to UMAP to get a two-dimensional embedding of the time series. [`recur::embed()`](https://github.com/timradtke/recur/blob/master/R/embed.R) is a convenience function that first calls `recur::measure()` and then `umap::umap()` to do this.
+
+```{r}
+walmart_embed <- recur::embed(data = walmart)
+```
+
+Even before visualizing the embedding, we continue and cluster the products in the embedding space via HDBSCAN where the [`recur::cluster()`](https://github.com/timradtke/recur/blob/master/R/cluster.R) function calls `dbscan::hdbscan()` to do so.
+
+```{r}
+walmart_cluster <- recur::cluster(walmart_embed)
+```
+
+```{r, echo = FALSE, fig.height = 3}
+walmart_cluster$embedding %>%
+  mutate(cluster = as.factor(cluster)) %>%
+  ggplot(aes(x = x, y = y, color = cluster, alpha = membership_prob)) +
+  geom_point() +
+  theme(legend.position = "none")
+```
+
+There appear to exist groups of time series that are *very* different from the rest. If we focus on the central, largest set of time series, we see that they are mostly densely clustered.
+
+```{r, echo = FALSE, fig.height = 3}
+walmart_cluster$embedding %>%
+  mutate(cluster = as.factor(cluster)) %>%
+  ggplot(aes(x = x, y = y, color = cluster, alpha = membership_prob)) +
+  geom_point() +
+  coord_cartesian(xlim = c(-7.5,7.5), ylim = c(-7.5,7.5)) +
+  theme(legend.position = "none")
+```
+
+Since this by itself might not be overly useful, we can instead look at the $n$ time series in cluster $k$ with the largest HDBSCAN cluster membership probability using the following function:
+
+```{r}
+plot_top_n_from_cluster_k <- function(clustered, data, n = 9, k = 1) {
+  filtered <- clustered$embedding[clustered$embedding$cluster == k,]
+  ordered <- filtered[order(filtered$membership_prob, decreasing = TRUE),]
+  n <- min(nrow(ordered), n)
+  
+  
+  pp <- data[data$id %in% ordered$id[1:n],] %>%
+    ggplot(aes(x = date, y = value)) +
+    geom_line(color = "grey") +
+    geom_point() +
+    facet_wrap(~id, scales = "free") +
+    labs(x = "Month", y = "Sales", 
+         title = paste0("Top ", n, " Series in Cluster ", k))
+  
+  return(pp)
+}
+```
+
+```{r, echo = FALSE, fig.height = 4}
+plot_top_n_from_cluster_k(walmart_cluster, walmart, n = 9, k = 5)
+plot_top_n_from_cluster_k(walmart_cluster, walmart, n = 9, k = 9)
+plot_top_n_from_cluster_k(walmart_cluster, walmart, n = 9, k = 13)
+```
+
+If you would reproduce this at home and check more of the clusters, you would notice that many of the clusters consist of a set of time series that starts *after* the earliest possible start date and thus has 0 sales for the first months. This can mean, of course, that a quarter or half or more of the values of the series are *exactly* equal to other series with the same start date, while at the same time the importance of the differences between the actual observations is lessened by the min-max scaling. One example of this is the following cluster.
+
+```{r, echo = FALSE, fig.height = 4}
+plot_top_n_from_cluster_k(walmart_cluster, walmart, n = 9, k = 19)
+```
+
+So the method is certainly not perfect. But this drawback can also help to check your assumptions on whether the data is clean or not. It can also identify groups of time series that need a different modeling approach than others.
+
+### UMAP and Recurrence Plots for Citi Bike Rides
+
+We can now apply the same methods to the Citi Bike data. An interesting differentiation to the Walmart data is that most time series here have a strong yearly seasonality. This, for example, is what the recurrence plot of Citi Bike station 360 looks like:
+
+```{r, echo = FALSE, fig.height = 4}
+citibike_recur <- recur::measure(citibike, shape = "long", 
+                                 size = "square")
+
+citibike_recur$recurrence_table %>%
+  filter(id == "360") %>%
+  mutate(date_x = as.character(date_x),
+         date_y = as.character(date_y)) %>%
+  ggplot() +
+  geom_raster(aes(x = date_x, y = date_y, fill = recurrence)) +
+  facet_wrap(~id) +
+  theme(axis.title.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank())
+```
+
+Compared to the plot of the Walmart product above, this is much closer to the idealized sine curve recurrence pattern!
+
+To analyze the entire dataset, we take the monthly observations of Citi Bike rides, compute the recurrence plots and pass them to UMAP and HDBSCAN, just as before.
+
+```{r}
+citibike_embed <- recur::embed(data = citibike)
+citibike_cluster <- recur::cluster(citibike_embed)
+```
+
+This time, the global dispersion in the UMAP embedding is not quite as extreme as for Walmart, and HDBSCAN is able to cluster the time series nicely.
+
+```{r, echo = FALSE, fig.height = 3}
+ggplot(citibike_cluster$embedding) +
+  geom_point(aes(x = x, y = y, 
+                 color = as.factor(cluster), 
+                 alpha = membership_prob)) +
+  theme(legend.position = "none")
+```
+
+We peak into the clusters to reveal that yet again the clusters depend heavily on the dates at which the respective stations within the cluster were used for the first/last time, as this provides UMAP with the largest *global* variation. 
+
+```{r, echo = FALSE}
+plot_top_n_from_cluster_k <- function(clustered, data, 
+                                      n = 9, k = 1) {
+  filtered <- clustered$embedding[clustered$embedding$cluster == k,]
+  ordered <- filtered[order(filtered$membership_prob, decreasing = TRUE),]
+  n <- min(nrow(ordered), n)
+  
+  
+  pp <- data[data$id %in% ordered$id[1:n],] %>%
+    ggplot(aes(x = date, y = value)) +
+    geom_line(color = "grey") +
+    geom_point() +
+    facet_wrap(~id, scales = "free") +
+    labs(x = "Month", y = "Rides", 
+         title = paste0("Top ", n, " Series in Cluster ", k))
+  
+  return(pp)
+}
+```
+
+```{r, echo = FALSE, fig.height = 4}
+plot_top_n_from_cluster_k(citibike_cluster, citibike, n = 6, k = 12)
+plot_top_n_from_cluster_k(citibike_cluster, citibike, n = 6, k = 2)
+plot_top_n_from_cluster_k(citibike_cluster, citibike, n = 6, k = 1)
+plot_top_n_from_cluster_k(citibike_cluster, citibike, n = 6, k = 6)
+```
+
+## Citi Bike Recurrence Plots and Location Data
+
+A unique feature of the Citi Bike data is that each time series corresponds to a location in New York since the rides are counted for each station at which a ride starts. The coordinates of Citi Bike stations are also available with the ride data which let's us make use of this information.
+
+We can take the cluster information that we used in the plot of the embedding above and project the stations with the cluster information onto their respective coordinate. The resulting plot reveals that Citi Bike rolled out its stations by distinct areas in New York. The largest cluster (pink) corresponds to the stations available from the start, which are located in Manhattan south of Central Park, as well as the parts of Brooklyn that connect to Manhattan via the Williamsburg Bridge, Brooklyn Bridge and Manhattan Bridge.
+
+```{r, echo = FALSE, fig.height = 6, message = FALSE}
+loc_w_cluster <- mutate(locations, id = as.character(start_station)) %>%
+  inner_join(citibike_cluster$embedding, by = "id") %>%
+  filter(start_station_latitude > 40.625, start_station_latitude < 40.825,
+         start_station_longitude > -74.05, 
+         start_station_longitude < -73.875) %>%
+  mutate(cluster = as.factor(cluster))
+
+map <- get_map(c(left = -74.075, bottom = 40.645, 
+                 right = -73.85, top = 40.845))
+ggmap(map, extent = "panel") +
+  geom_point(aes(y = start_station_latitude, 
+                 x = start_station_longitude,
+                 color = cluster, 
+                 alpha = membership_prob),
+             data = loc_w_cluster) +
+  labs(x = "Start Station Longitude",
+       y = "Start Station Latitude",
+       title = "Citibike Stations by Recurrence Plot Embedding Cluster",
+       caption = "Maps provided by Stamen Maps.") +
+  theme(legend.position = "none")
+```
+
+## References
+
+Citi Bike data available at https://s3.amazonaws.com/tripdata/index.html. See also https://www.citibikenyc.com/system-data.
+
+The Walmart data set is part of the M5 competition hosted on Kaggle, see https://www.kaggle.com/c/m5-forecasting-accuracy.
+
+Xixi Lia, Yanfei Kanga, Feng Li (2020). [*Forecasting with Time Series Imaging*](https://arxiv.org/abs/1904.08064), ArXiv e-prints 1802.03426.
+
+J.-P. Eckmann, S. Oliffson Kamphorst, D. Ruelle (1987). [*Recurrence Plots of Dynamical Systems*](https://iopscience.iop.org/article/10.1209/0295-5075/4/9/004), EPL (Europhysics Letters), Vol. 4, 9.
+
+L. McInnes, J. Healy, J. Melville (2018). [*UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction*](https://arxiv.org/abs/1802.03426), ArXiv e-prints 1802.03426.
+
+L. McInnes, J. Healy, S. Astels. *The hdbscan Clustering Library*.
+
+R. J.G.B. Campello, D. Moulavi, J. Sander (2013). *Density-Based Clustering Based on Hierarchical Density Estimates*, PAKDD 2013, Part II, LNAI 7819, pp. 160-172.

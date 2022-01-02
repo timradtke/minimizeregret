@@ -1,0 +1,386 @@
+---
+title: SVD for a Low-Dimensional Embedding of Instacart Products
+author: Tim Radtke
+date: '2018-07-25'
+slug: svd-instacart-product-embedding
+categories:
+  - Machine Learning
+tags:
+  - Instacart
+  - word2vec
+  - SVD
+  - PMI
+  - product recommendations
+  - embedding
+---
+
+```{r setup, include=TRUE, echo = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(message = FALSE)
+knitr::opts_chunk$set(warning = FALSE)
+```
+
+*Building on the Instacart product recommendations based on Pointwise Mutual Information (PMI) in [the previous article](https://minimizeregret.com/post/2018/06/17/instacart-products-bought-together/), we use Singular Value Decomposition to factorize the PMI matrix into a matrix of lower dimension ("embedding"). This allows us to identify groups of related products easily.*
+
+We finished [the previous article](https://minimizeregret.com/post/2018/06/17/instacart-products-bought-together/) with a long table where every row measured how surprisingly often two products were bought together according to the [Instacart Online Grocery Shopping](https://www.instacart.com/datasets/grocery-shopping-2017) dataset. The main point being that recommendations based on pointwise mutual information (PMI) are a strong first solution despite their simplicity. You can explore the results in [a Shiny app](https://timradtke.shinyapps.io/instacart/).
+
+While the previous result could be implemented entirely in SQL, we will move beyond what is feasible in SQL very soon.
+
+## Goal: A word2vec-style Representation of Products
+
+Using [word2vec](https://papers.nips.cc/paper/5021-distributed-representations-of-words-and-phrases-and-their-compositionality.pdf) is all the rage to derive numeric vector representations of words in natural language processing. The result is be a $N\times K$ matrix of $N$ words represented by $K$ vectors. Since $K \ll N$, such a low-dimensional representation is extremely useful as input for subsequent tasks such as classification, or to perform word2vec's hallmark word vector operations such as *zuckerberg - facebook + microsoft ~  nadella*.
+
+In our case, we deal with $N=8979$ products, which is manageable. Still, by using a small $K = 64$ we are able to go from a $N \times N$ pointwise mutual information matrix to a small-ish set of vectors summarizing the information. And since we will be using [singular value decomposition](https://jeremykun.com/2016/04/18/singular-value-decomposition-part-1-perspectives-on-linear-algebra/) to do so, (hopefully most) vectors will even highlight different groups of related products! That's a nice side effect when trying to derive higher level abstractions and patterns in the purchase data---compared to individual product-to-product relations---and comparable to topics derived from topic models like [Latent Dirichlet Allocation](http://www.jmlr.org/papers/volume3/blei03a/blei03a.pdf).
+
+This blog post is inspired by Chris Moody's [Stop Using word2vec](https://multithreaded.stitchfix.com/blog/2017/10/18/stop-using-word2vec/) on StichFix' MultiThreaded blog, in which Chris applied SVD in combination with PMI on the more typical NLP task of embedding words from the [Hacker News](https://cloud.google.com/bigquery/public-data/hacker-news) corpus. In the following, we will see that one can use the exact same method to derive a representation of items sold on Instacart.
+
+## From PMI Matrix to SVD
+
+[The previous blog post](https://minimizeregret.com/post/2018/06/17/instacart-products-bought-together/) introduced the Pointwise Mutual Information and how it can be applied to derive product recommendations for products that have been purchased in the same order. We finished with a long table called `pp_rec_smooth` in which every row represented an observed combination of two products that have been purchased together a couple of times, as well as their corresponding pointwise mutual information.
+
+```{r, echo = FALSE}
+library(dplyr)
+load(file = "/Users/timradtke/Dropbox/1meta_learning/LDA/instacart_lda/pp_rec_smooth.rda")
+pp_rec_smooth %>% 
+  filter(product_name.x == "Birthday Candles", product_id.x != product_id.y) %>%
+  arrange(-pmi) %>%
+  top_n(5, pmi) %>%
+  select(product_name.x, product_name.y, pmi) %>%
+  knitr::kable(digits = 2)
+```
+
+Consequently, the table is quite long with `r dim(pp_rec_smooth)[1]` rows. This is still smaller than the $8979\cdot 8979 = 80622441$ row table for *all* combinations of products. The latter, however, is exactly what we need for the matrix factorization through singular value decomposition: A $N \times N$ item-by-item pointwise mutual information matrix. We create this matrix by widening the long table; it's not beautiful, but it does the job.
+
+```{r}
+pmi_matrix <- pp_rec_smooth %>%
+  select(product_id.x, product_id.y, pmi) %>%
+  tidyr::spread(product_id.y, pmi)
+pmi_matrix_product_ids <- pmi_matrix[,1]
+pmi_matrix <- pmi_matrix[,-1]
+
+pmi_matrix[1:5,1:5]
+```
+
+All `NA`s in this table represent product combinations that have not been observed in the data and for which we consequently do not have a PMI value. 
+
+The problem with the `NA`s is that we cannot perform singular value decomposition on a matrix with missing entries. But assigning those entries any other value would give them meaning: A very negative value would convey a negative relationship, while setting all of them to zero implies no relationship. Neither is something we would like to simply assume in the following.
+
+A good alternative described in [Jurafsky and Martin](https://web.stanford.edu/~jurafsky/slp3/15.pdf) is to set not only the `NA`s to zero, but also the negative PMI values. This can furthermore be justified by the observation that it is generally more difficult to observe a negative relationship using PMI---as described in the previous blog post and by Jurafsky and Martin. Thus we proceed by replacing both `NA`s and negative values by zero.
+
+```{r}
+pmi_matrix[is.na(pmi_matrix)] <- 0
+pmi_matrix[pmi_matrix < 0] <- 0
+pmi_matrix[1:5,1:5]
+colSums(pmi_matrix)[1:5] # not only the diagonal is positive
+```
+
+The $N \times N$ matrix is now prepared for singular value decomposition. Though, it's not actually a matrix yet. So let's change that, and let's use the fact that the matrix has become really sparse by converting the object into a sparse matrix. 
+
+```{r}
+pmi_matrix <- as.matrix(pmi_matrix)
+row.names(pmi_matrix) <- pmi_matrix_product_ids$product_id.x
+colnames(pmi_matrix) <- pmi_matrix_product_ids$product_id.x
+
+library(Matrix)
+pmi_sparse_matrix <- Matrix(pmi_matrix, sparse = TRUE)
+pmi_sparse_matrix[1:5,1:5]
+```
+
+To make use of the sparsity when performing singular value decomposition, we can for example use the `sparsesvd` package. Here, we choose to find a representation of rank 64. This means in particular that we will have 64 vectors representing what was previously represented by 8979 vectors. Using the singular value decomposition, we arrange the available information in a more compact way; we lose some information, but hopefully retain most of it. Feel free to experiment with different values for the rank $K$. Problematic is that there is no good quantitative way of finding a good $K$. One could examine the eigenvalues, or check whether the vectors corresponding to the smallest eigenvalue for a given value of $K$ make some sense, and, if not, choose a smaller $K$ instead.
+
+```{r}
+library(sparsesvd)
+set.seed(80495)
+pmi_svd <- sparsesvd(pmi_sparse_matrix, 
+                     rank = 64)
+```
+
+The result looks as follows. We have the $N \times K$ matrix, `pmi_svd$u`, as well as the corresponding $K$ singular values. If we plot them, we can see how much information is contained in just the first couple of dimensions.
+
+```{r}
+dim(pmi_svd$u)
+```
+
+```{r, echo = FALSE}
+library(ggplot2)
+data.frame(x = 1:64, 
+           y = pmi_svd$d) %>%
+  ggplot(aes(x = x, y = y)) +
+  geom_line() +
+  #geom_point(, size = 1) ++
+  geom_rug(sides = "l", color = "blue", alpha = 0.3, size = 0.5) +
+  theme_bw() +
+  labs(x = "Index", y = "Eigenvalue") +
+  coord_cartesian(ylim = c(0,430)) 
+```
+
+## Working with the SVD
+
+Before we start using the result of the singular value decomposition, we add the product names to the rows of the left-singular vectors.
+
+```{r, eval = FALSE}
+products <- readr::read_csv("products.csv")
+departments <- readr::read_csv("departments.csv")
+
+id_name_dict <- data.frame(product_id = as.numeric(row.names(pmi_sparse_matrix))) %>%
+  inner_join(select(products, product_id, 
+                    product_name, aisle_id, department_id)) %>%
+  left_join(departments)
+
+product_vectors <- pmi_svd$u
+row.names(product_vectors) <- id_name_dict$product_name
+```
+
+```{r, echo = FALSE}
+products <- readr::read_csv("/Users/timradtke/Dropbox/1meta_learning/LDA/instacart_lda/products.csv")
+departments <- readr::read_csv("/Users/timradtke/Dropbox/1meta_learning/LDA/instacart_lda/departments.csv")
+
+id_name_dict <- data.frame(product_id = 
+                             as.numeric(row.names(pmi_sparse_matrix))) %>%
+  inner_join(select(products, product_id, 
+                    product_name, aisle_id, department_id)) %>%
+  left_join(departments)
+
+product_vectors <- pmi_svd$u
+row.names(product_vectors) <- id_name_dict$product_name
+```
+
+With the row names added, we can easily search for specific products as well as the products that are closest in the $K$-dimensional space as measured by a measure as simple as the dot product. That is, we're starting to apply the typical techniques from word embeddings on our product matrix!
+
+```{r}
+# first a function to find the actual product names
+search_product <- function(products, name) {
+  products[grepl(name, products, fixed = TRUE)]
+}
+
+# then the function that finds similar products by dot product
+search_synonyms <- function(word_vectors, selected_vector) {
+  # https://juliasilge.com/blog/tidy-word-vectors/
+  require(broom)
+  
+  similarities <- word_vectors %*% selected_vector %>%
+    tidy() %>%
+    as_tibble() %>%
+    rename(product = .rownames,
+           similarity = unrowname.x.)
+  
+  similarities %>%
+    arrange(-similarity)    
+}
+```
+
+We search for products containing the word *Ketchup* and then look for similar products, where the similarity is based on the dot product on a singular value decomposition of commonly bought together items.
+
+```{r}
+search_product(row.names(product_vectors), "Ketchup")
+search_synonyms(product_vectors, 
+                product_vectors["Tomato Ketchup",]) %>% 
+  head(10) %>%
+  knitr::kable(digits = 4)
+
+search_product(row.names(product_vectors), "Smoothie") %>% tail()
+search_synonyms(product_vectors, 
+                product_vectors["Green Machine Juice Smoothie",]) %>%
+  head(10) %>%
+  knitr::kable(digits = 4)
+```
+
+These results look quite good! But also similar to what we have been able to do based on the PMI alone.
+
+## Exploring Groups of Products via Dimensions
+
+Something that the PMI values did not provide us with were **groups of similar/frequently purchased together products**. Similarly to how we would derive topics when applying Latent Dirichlet Allocation on news articles, it would be super nice to build entire groups of bought-together products. In the case of Instacart, we might even deduct entire recipes. While no one gave singular value decomposition a metaphor as good as the topic model one, the individual singular vectors still allow us to find groups of related products. This is the case because related products should have similar values in certain dimensions. In the extreme, SVD compresses the information about a group of related products onto a single dimension in which these products have particularly high values.
+
+Thus we can find "important" groups of products by exploring for a given vector the products with the largest loading on that vector.
+
+The graph below contrasts singular vectors 7 and 8 from the `product_vectors` matrix. We see that most observations are very close to 0 on both vectors, while comparatively few products are loaded in absolute terms on just one of the two vectors. This already indicates how the vectors split the work of representing the information that was previously spread across all 8979 vectors: By focusing on a few products per vector, we can more easily store the overall patterns in the data. If a single vector can contain information on about 140 products, then $64 \cdot 140 = 8979$ products can be represented in 64 dimensions.
+
+```{r, echo = FALSE}
+product_vectors[,c(7,8)] %>%
+  tidy() %>%
+  bind_cols(id_name_dict) %>%
+  ggplot(aes(x = X1, y = X2)) +
+  geom_rug(color = "blue", sides = "bl", alpha = 0.1) +
+  geom_point(alpha = 0.1) +
+  labs(x = "Singular Vector 7", y = "Singular Vector 8") +
+  theme_bw() +
+  theme(legend.position = "none")
+```
+
+If the model works well, related products will load similarly on a given vector. Let's check for example what kind of information vector 8 stores about products. To get an idea, let's just look at the 20 most negatively loaded products on vector 8. You see the list of the products below. Given the many "vegan", "beefless", "dairy free", "fishless" mentions in product names, it should be safe to say that vegan products tend to load negatively on vector 8. To hype it up a notch: **Our model has learned the concept of a vegan lifestyle from products that were bought together!**
+
+```{r, echo = FALSE}
+product_vectors[,c(7,8)] %>%
+  tidy() %>%
+  bind_cols(id_name_dict) %>%
+  arrange(X2) %>%
+  head(20) %>%
+  select(product_name, department, X2) %>%
+  rename(X8 = X2) %>%
+  knitr::kable(digits = 4)
+```
+
+We can also look at the other end of vector 8, by considering products that loaded positively. Here we find a selection of snacks. But not just any snacks; we have **a selection of high protein snacks ranging from nut bars to turkey jerkey**.
+
+```{r, echo = FALSE}
+product_vectors[,c(7,8)] %>%
+  tidy() %>%
+  bind_cols(id_name_dict) %>%
+  arrange(X2) %>%
+  tail(20) %>%
+  select(product_name, department, X2) %>%
+  rename(X8 = X2) %>%
+  knitr::kable(digits = 4)
+```
+
+```{r, eval = FALSE, include = FALSE}
+product_vectors[,7] %>% tidy() %>% arrange(-x) %>% as.data.frame() %>% tail(10) 
+product_vectors[,7] %>% tidy() %>% arrange(-x) %>% as.data.frame() %>% head(10) 
+product_vectors[,8] %>% tidy() %>% arrange(-x) %>% as.data.frame() %>% head(10) 
+product_vectors[,8] %>% tidy() %>% arrange(-x) %>% as.data.frame() %>% tail(10) 
+# soup
+product_vectors[,27] %>% tidy() %>% arrange(-x) %>% as.data.frame() %>% head(100)
+# smoothie
+product_vectors[,56] %>% tidy() %>% arrange(-x) %>% as.data.frame() %>% head(100)
+```
+
+### Parallel Coordinates Plot
+
+```{r, echo = FALSE}
+product_vectors_long <- product_vectors %>%
+  tidy() %>%
+  select(-`.rownames`) %>%
+  bind_cols(id_name_dict) %>%
+  left_join(departments) %>%
+  tidyr::gather(key = "dimension", value = "coordinate",
+         -product_id, -product_name, -aisle_id, 
+         -department_id, -department)
+
+dimension_quantiles <- product_vectors_long %>%
+  group_by(dimension) %>%
+  summarize(q05 = quantile(coordinate, 0.05),
+            q95 = quantile(coordinate, 0.95))
+
+# To make the area around 0 less crowded, take out products that
+# don't load high on any of the dimensions
+special_products <- product_vectors_long %>%
+  left_join(dimension_quantiles) %>%
+  filter(dimension %in% c(paste0("X", 1:9))) %>%
+  filter(coordinate > q95 | coordinate < q05) %>%
+  distinct(product_id, product_name, department)
+
+product_vectors_long %>%
+  filter(dimension %in% c(paste0("X", 1:9))) %>%
+  filter(product_id %in% special_products$product_id) %>%
+  left_join(dimension_quantiles) %>%
+  #filter(coordinate > q95 | coordinate < q05) %>%
+  ggplot(aes(x = dimension, y = coordinate,
+             group = product_id, color = department)) +
+  geom_point(alpha = 0.1) +
+  geom_line(alpha = 0.025) +
+  theme_bw() +
+  theme(legend.position = "none") +
+  labs(x = "Dimension", y = "Coordinate", 
+       title = "Parallel Coordinates Plot",
+       subtitle = "Displaying only the first 10 dimensions. Colors by department of the products.")
+```
+
+To take the previous plot to the next level---or rather to the next dimension---one can try to display several dimensions in a parallel coordinates plot like the one below. This plot is not ideal on a number of dimensions; it's obviously prone to overplotting. And not being interactive, it's difficult to find out whether there are items that load on two neighboring dimensions.
+
+But by adding a color for every department, one gets a sense of the fact that some dimensions load only on products from one or very few departments (e.g., dimensions 2, 3, or 6), while other dimensions (e.g., 7) bring together products from several departments. In the case of dimensions 2 and 3, we even have the lucky case that the same products load on neighboring dimensions. This should generally not happen too often, since it implies that similar information is stored twice. It does happen when the products in question carry a lot of information about the dataset, i.e., explain a lot of the variance. In this case, it creates a very explicit delineation of one category from all others: the *babies* department.
+
+```{r, echo = FALSE}
+baby_prep <- product_vectors[,c(2,3)] %>%
+  tidy() %>%
+  bind_cols(id_name_dict) %>%
+  mutate(color = ifelse(department == "babies", "blue", "black")) 
+
+baby_prep %>%
+  ggplot(aes(x = X1, y = X2)) +
+  geom_rug(color = baby_prep$color, sides = "bl", alpha = 0.1) +
+  geom_point(color = baby_prep$color, alpha = 0.2) +
+  labs(x = "Singular Vector 2", y = "Singular Vector 3",
+       subtitle = "Products tagged as department 'babies' in blue color.") +
+  theme_bw() +
+  theme(legend.position = "none")
+```
+
+```{r}
+# show some of the products in the baby cluster
+set.seed(5463)
+product_vectors[,c(2,3)] %>%
+  tidy() %>%
+  bind_cols(id_name_dict) %>%
+  filter(X1 > 0.05, X2 > 0.03) %>%
+  select(product_name, department, X1, X2) %>%
+  rename(X3 = X2, X2 = X1) %>%
+  sample_n(5) %>%
+  knitr::kable(digits = 2)
+```
+
+While this effect is particularly drastic for the baby food, it is also observable in later dimensions for different product groups. For example, we could consider dimensions 13 and 14. They are not able to separate products quite as clearly, but some clusters are still visible. The products indicated in blue, for example, are a cluster of *frozen* and foremost Indian meals. The orange cluster, on the other hand, groups different items used for baking. Note how the rug lines of dimension 13 show that this dimension alone is not able to separate blue from orange observations. It takes the second dimension to successfully perform a separation.
+
+```{r, echo = FALSE}
+indian_prep <- product_vectors[,c(13,14)] %>%
+  tidy() %>%
+  bind_cols(id_name_dict) %>%
+  mutate(color = ifelse(X1 < -0.05 & X2 > 0.04, "blue", "black"),
+         color = ifelse(X1 < -0.05 & X2 < 0.04, "orange", color))  %>%
+  rename(X13 = X1, X14 = X2)
+
+indian_prep %>%
+  ggplot(aes(x = X13, y = X14)) +
+  geom_rug(color = indian_prep$color, sides = "bl", alpha = 0.1) +
+  geom_point(color = indian_prep$color, alpha = 0.3) +
+  labs(x = "Singular Vector 13", y = "Singular Vector 14",
+       subtitle = "A cluster of Indian food in blue color, baking ingredients in orange color.") +
+  theme_bw() +
+  theme(legend.position = "none")
+```
+
+Frozen meals, Indian dishes for the most part:
+
+```{r, echo = FALSE}
+indian_prep %>%
+  filter(color == "blue") %>%
+  arrange(X13, -X14) %>%
+  select(product_name, department, X13, X14) %>%
+  head(10) %>%
+  knitr::kable(digits = 2)
+```
+
+Advanced baking ingredients:
+
+```{r, echo = FALSE}
+indian_prep %>%
+  filter(color == "orange") %>%
+  select(product_name, department, X13, X14) %>%
+  head(5) %>%
+  knitr::kable(digits = 2)
+```
+
+Since this post would become even longer if I walked you through every interesting dimension, [I instead put the results in a small Shiny app](https://timradtke.shinyapps.io/instacart_svd_app/). You can use it to explore more customer behavior patterns that this simple model was able to learn. For example, find a dimension for all-things burrito, as well as dairy free yogurts and milk in dimension 42.
+
+## Closing Thoughts
+
+In this post we have derived a low dimensional representation of products sold through Instacart. Even though a singular value decomposition is a simple model, the derived vector representation seems useful upon inspection. In this post, we have focused our attention on exploring the resulting vectors and showing how they compress and represent information about certain groups of products that are purchased together by customers.
+
+We have seen that the singular vectors can be interpreted similarly to LDA's topics given that a given group of products loads on a one or a few vectors. What is still to be explored in future blog posts is the ability to perform vector operations, i.e., operations such as *Hamburger Buns - Beef + Wiener ~ Hot Dog Buns*. We have quickly shown how one can similar products to a given product through the dot product, but we have not used the cosine similarity yet. A future blog post will use the two dimensional graphs above to show how the dot product and cosine similarity can be used to explore the space of products.
+
+Until then, check out the product dimensions [in the Shiny app](https://timradtke.shinyapps.io/instacart_svd_app/) to find more than just the group of vegan products.
+
+## References
+
+The Instacart Online Grocery Shopping Dataset 2017. Accessed from <https://www.instacart.com/datasets/grocery-shopping-2017> on May 2, 2018.
+
+Chris Moody. [Stop Using word2vec](https://multithreaded.stitchfix.com/blog/2017/10/18/stop-using-word2vec/). Blog post on Stitchfix' MultiThreaded blog, October 18, 2017.
+
+Julia Silge. [Word Vectors with Tidy Data Principles](https://juliasilge.com/blog/tidy-word-vectors/). Blog post, October 30, 2017.
+
+Daniel Jurafsky and James H. Martin. [Vector Semantics](https://web.stanford.edu/~jurafsky/slp3/15.pdf). Book chapter in *[Speech and Language Processing](https://web.stanford.edu/~jurafsky/slp3/)*. Draft of August 7, 2017.
+
+Omer Levy and Yoav Goldberg. [Neural Word Embedding as Implicit Matrix Factorization](https://papers.nips.cc/paper/5477-neural-word-embedding-as-implicit-matrix-factorization). In *Advances in Neural Information Processing Systems 27* (NIPS 2014).
+
+Omer Levy, Yoav Goldberg and Ido Dagan. [Improving Distributional Similarity with Lessons Learned from Word Embeddings](http://www.aclweb.org/anthology/Q15-1016). *Transactions of the Association for Computational Linguistics*, vol. 3, pp. 211–225, 2015.
+
+Tomas Mikolov, Ilya Sutskever, Kai Chen, Greg Corrado and Jeffrey Dean. [Distributed Representations of Words and Phrases and their Compositionality](https://arxiv.org/abs/1310.4546).

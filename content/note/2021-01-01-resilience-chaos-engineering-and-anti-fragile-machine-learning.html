@@ -1,0 +1,28 @@
+---
+title: Resilience, Chaos Engineering and Anti-Fragile Machine Learning
+author: Tim Radtke
+date: '2021-01-01'
+slug: resilience-chaos-engineering-and-anti-fragile-machine-learning
+categories: []
+tags: []
+---
+
+<script src="/rmarkdown-libs/header-attrs/header-attrs.js"></script>
+<link href="/rmarkdown-libs/anchor-sections/anchor-sections.css" rel="stylesheet" />
+<script src="/rmarkdown-libs/anchor-sections/anchor-sections.js"></script>
+
+
+<p>In his <a href="https://www.theobservereffect.org/tobi.html">interview with The Observer Effect</a>, Tobi Lütke, CEO of Shopify, describes how Shopify benefits from resilient systems:</p>
+<blockquote>
+<p>Most interesting things come from non-deterministic behaviors. People have a love for the predictable, but there is value in being able to build systems that can absorb whatever is being thrown at them and still have good outcomes.</p>
+</blockquote>
+<blockquote>
+<p>So, I love Antifragile, and I make everyone read it. It finally put a name to an important concept that we practiced. Before this, I would just log in and shut down various servers to teach the team what’s now called chaos engineering.</p>
+</blockquote>
+<blockquote>
+<p>But we’ve done this for a long, long time. We’ve designed Shopify very well because resilience and uptime are so important for building trust. These lessons were there in the building of our architecture. And then I had to take over as CEO.</p>
+</blockquote>
+<p>It sticks out that Lütke uses “resilient” and “antifragile” interchangeably even though Taleb would point out that they are not the same thing: Whereas a resilient system doesn’t fail due to randomly turned off servers, an antifragile system benefits. (Are Shopify’s systems robust or have they become somehow better beyond robust due to their exposure to “chaos”?)</p>
+<p>But this doesn’t diminish Lütke’s notion of resilience and uptime being “so important for building trust” (with users, presumably): Users’ trust in applications is fragile. Earning users’ trust in a tool that augments or automates decisions is difficult, and the trust is withdrawn quickly when the tool makes a stupid mistake. Making your tool robust against failure modes is how you make it trustworthy—and used.</p>
+<p>Which makes it interesting to reason about what an equivalent to shutting off random servers is to machine learning applications (beyond shutting off the server running the model). Label noise? Shuffling features? Adding Covid-19-style disruptions to your time series? The latter might be more related to the idea of <a href="https://en.wikipedia.org/wiki/Chaos_engineering">experimenting with a software system in production</a>.</p>
+<p>And—to return to the topic of discerning anti-fragile and robust—what would it mean for machine learning algorithms “to gain from disorder”? <a href="https://jmlr.org/papers/v15/srivastava14a.html">Dropout</a> comes to mind. What about causal inference through <a href="https://en.wikipedia.org/wiki/Natural_experiment">natural experiments</a>?</p>

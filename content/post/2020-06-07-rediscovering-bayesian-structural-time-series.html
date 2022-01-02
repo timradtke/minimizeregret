@@ -1,0 +1,228 @@
+---
+title: 'Rediscovering Bayesian Structural Time Series'
+author: Tim Radtke
+date: '2020-06-07'
+slug: rediscovering-bayesian-structural-time-series
+categories:
+  - forecasting
+tags:
+  - time series
+  - forecasting
+  - Statistics
+  - Bayesian Inference
+  - Stan
+  - GAM
+  - BSTS
+  - DLM
+---
+
+
+
+<p><em>This article derives the Local-Linear Trend specification of the Bayesian Structural Time Series model family from scratch, implements it in Stan and visualizes its components via <code>tidybayes</code>. To provide context, links to GAMs and the <code>prophet</code> package are highlighted. The code is available <a href="https://github.com/timradtke/bsts-stan">here</a>.</em></p>
+<p>I tried to come up with a simple way to detect “outliers” in time series. Nothing special, no anomaly detection via variational auto-encoders, just finding values of low probability in a univariate time series. The week before, I had been toying with generalized additive models (GAMs). So it seemed like a good idea to fit a GAM with a spline-based smooth term to model the trend flexibly while other features take care of everything else (seasonality, …). But really the flexible trend is nice and simple and you don’t even need to think too much:</p>
+<pre class="r"><code>set.seed(573)
+
+n &lt;- 48
+x &lt;- 1:n
+y &lt;- rnorm(n, tanh(x / 6 - 4), 0.25 )
+
+gam_fit &lt;- mgcv::gam(y ~ 1 + s(x))</code></pre>
+<p><img src="/post/2020-06-07-rediscovering-bayesian-structural-time-series_files/figure-html/unnamed-chunk-3-1.png" width="672" /></p>
+<p>This is all fine and well to get a nice in-sample fit which is all you need for standard outlier detection. For example, the <code>forecast</code> package’s <code>tsoutliers()</code> function relies on the non-parametric <code>stats::supsmu()</code> function to fit a flexible trend.</p>
+<p>But then I went one step too far: “Wouldn’t it be nice to use a GAM to <em>forecast</em> my time series as well?”</p>
+<p>If you’re familiar with spline functions you know this isn’t a question I should have asked myself: When using splines, you are limited to predicting new data that falls into the domain of your training data, i.e. the domain on which the splines were fitted. Once you leave this domain, there are no fitted splines and so your model can’t predict. You can always make assumptions, of course: A linear continuation, using the last value, or similar. But what about your prediction interval?</p>
+<p><img src="/post/gam_plot_w_question.png" /></p>
+<p>So I continued thinking: Maybe one could estimate how often the trend has adjusted in the past and use this to derive the prediction interval?</p>
+<div id="trend-uncertainty-in-the-prophet-package" class="section level2">
+<h2>Trend Uncertainty in the <code>prophet</code> Package</h2>
+<p>In their <a href="https://github.com/facebook/prophet"><code>prophet</code> package</a>, Sean J. Taylor and Benjamin Letham specify their model “similar to a generalized additive model” (Taylor and Letham, 2018) as</p>
+<p><span class="math display">\[
+y(t) = g(t) + s(t) + h(t) + \epsilon.
+\]</span></p>
+<p>If we disregard the seasonal <span class="math inline">\(s(t)\)</span> and holiday components <span class="math inline">\(h(t)\)</span> for the moment, then this corresponds to the GAM formulation used above. A crucial addition of the <code>prophet</code> package is how Taylor and Letham manage to incorporate uncertainty due to historical trend changes in the model’s prediction intervals (see chapter 3.1 in <a href="https://peerj.com/preprints/3190.pdf">their paper</a>): In their trend specification,</p>
+<p><span class="math display">\[
+g(t) = (k + a(t)^T \delta )t + (m+a(t)^T\gamma),
+\]</span>
+<span class="math inline">\(k\)</span> corresponds to the linear growth rate but can be adjusted at changepoints <span class="math inline">\(a(t)\)</span> by different rate adjustments stored in the vector <span class="math inline">\(\delta\)</span>. In their model specification for Bayesian inference, they pick <span class="math inline">\(\delta_j \sim \text{Laplace}(0,\tau)\)</span> as prior distribution for the amount by which the rate may change at a changepoint. This implies changes are generally more likely close to zero but can be large from time to time.</p>
+<p>It also suggests a convenient approach to forecast the trend uncertainty: They use this generative model to sample new changepoints in the future, as well as new changes in the growth rate via the above prior distribution: Take the estimated rate changes <span class="math inline">\(\hat{\delta}_j\)</span> and use them to get a <a href="https://en.wikipedia.org/wiki/Laplace_distribution#Estimation_of_parameters">maximum likelihood estimate of the Laplace distribution’s scale parameter</a>: <span class="math inline">\(\hat{\tau} = \frac{1}{S} \sum_{j = 1}^S |\hat{\delta}_j|\)</span>.</p>
+<p>This provides a way to forecast (the uncertainty of) the piece-wise constant growth rate: Sample new changepoints with linear trend changes according to the distribution fitted to historical growth rate changes.</p>
+<p>Could one go a step further and model a continously changing trend as well as its forecast uncertainty? Would this in particular be possible for the spline-based smooth term in the original GAM specified above?</p>
+<p>Roughly, this is the direction I went during a late evening whiteboard drawing session:</p>
+<p><img src="/post/whiteboard_trend_changes.png" /></p>
+<p>Don’t judge my drawing skills. I believe what I was trying to derive was some sort of local linear approximation to the smooth trend (you see the straight lines for every three observations). Each of the lines would be described by their own coefficients (see <span class="math inline">\(a_0, b_0, a_1, b_1, ...\)</span> in the lower left corner). And to be fancy, I wrote Random Walk prior to describe how much a coefficient may change from one time point to the next. This is actually not much different from the formulation used in the <code>prophet</code> package: In my drawing, we have a potential changepoint every third observation and instead of changes drawn from a Normal distribution (random walk prior), <code>prophet</code> assumes the Laplace.</p>
+<p>A little later that evening it hit me: I already know this! The model I was sketching is equivalent to the local-linear trend Bayesian structural time series model (<a href="https://research.google/pubs/pub41335/">Scott and Varian 2014</a>)—which itself is equivalent to a <a href="https://arxiv.org/abs/1903.11309">dynamic linear model</a> or a <a href="https://en.wikipedia.org/wiki/State-space_representation">state-space model</a> formulation. For the close cousin of the local-level model, look no further than me using it <a href="https://minimizeregret.com/post/2020/01/18/the-causal-effect-of-new-years-resolutions/">here</a>.</p>
+<p>Let’s have a closer look at this model that promises to be sufficiently flexible for many trends, can incorporate other features, is interpretable, and propagates the uncertainty from trend changes into the forecasts.</p>
+</div>
+<div id="bayesian-structural-time-series" class="section level2">
+<h2>Bayesian Structural Time Series</h2>
+<p>We are looking for a flexible way of describing the trend <span class="math inline">\(\mu_t\)</span> of a time series. Assume that the observations of the time series are the sum of potentially several components: the trend, seasonality, regressors and noise:</p>
+<p><span class="math display">\[
+Y_t \sim \text{Normal}(\lambda_t, \sigma_Y), \quad \lambda_t = \mu_t + \tau_t + \beta^Tx_t
+\]</span></p>
+<p>While the seasonal and regressor components are certainly interesting, we’ll focus on the trend for now.</p>
+<p>Following my sketch above, what we expect to have is a trend <span class="math inline">\(\mu_t\)</span> that is a linear function of time, something along the lines of <span class="math inline">\(\mu_t = \delta_t \cdot t\)</span>. This is equivalent to <span class="math inline">\(\mu_t = \mu_{t-1} + \delta_t\)</span> given that we only consider equal time steps of size 1. So we expect that the trend at the next step is the previous trend plus a smoothly changing difference <span class="math inline">\(\delta_t\)</span>. Adding some additional noise to this relationship, we get</p>
+<p><span class="math display">\[
+\mu_t = \mu_{t-1} + \delta_t + \epsilon_{\mu,t}, \quad \epsilon_{\mu,t} \sim \text{Normal}(0, \sigma_\mu).
+\]</span>
+If the change <span class="math inline">\(\delta_t\)</span> at each time would be constant at <span class="math inline">\(\delta\)</span>, then the trend would be equal to a linear regression against time. If we let <span class="math inline">\(\delta_t\)</span> change over time, however, the trend can become a rather flexible function of time—while being locally linear in time.</p>
+<p>How do we let <span class="math inline">\(\delta_t\)</span> change over time? This is where the random walk prior from the whiteboard sketch comes in:</p>
+<p><span class="math display">\[
+\delta_t = \delta_{t-1} + \epsilon_{\delta,t}, \quad \epsilon_{\delta,t} \sim \text{Normal}(0, \sigma_\delta)
+\]</span></p>
+<p>Note that this model encompasses a few special cases. First, if <span class="math inline">\(\delta_t\)</span> was fixed at 0, then the trend <span class="math inline">\(\mu_t\)</span> would adjust according to a random walk and we would be looking at the local-level model (as used <a href="https://minimizeregret.com/post/2020/01/18/the-causal-effect-of-new-years-resolutions/">here</a>). Second, if <span class="math inline">\(\sigma_\delta\)</span> was 0 and thus <span class="math inline">\(\epsilon_{\delta,t}\)</span> was 0, the trend <span class="math inline">\(\mu_t\)</span> would be changing according to the linear model—either with some noise or in a straight line if <span class="math inline">\(\sigma_{\mu}\)</span> was 0.</p>
+</div>
+<div id="generating-a-time-series" class="section level2">
+<h2>Generating a Time Series</h2>
+<p>Given this model, we can generate a time series that follows this model exactly. This provides us with additional intuition with regard to how the different parameters interact.</p>
+<p>Here, we generate <span class="math inline">\(T=40\)</span> observations. We draw <span class="math inline">\(\sigma_{\mu}, \sigma_{\delta}\)</span> and <span class="math inline">\(\sigma_Y\)</span> from Half-Normal prior distributions with different scale.</p>
+<pre class="r"><code>set.seed(4539)
+
+T &lt;- 40
+y &lt;- rep(NA, T)
+
+# Draw standard normal errors which will be 
+# multiplied by the scale later
+mu_err &lt;- rnorm(T, 0, 1)
+delta_err &lt;- rnorm(T, 0, 1)
+
+s_obs &lt;- abs(rnorm(1, 0, 10))
+s_slope &lt;- abs(rnorm(1, 0, 0.5))
+s_level &lt;- abs(rnorm(1, 0, 0.5))</code></pre>
+<pre><code>## [1] &quot;Scale of Observation Noise: 10.33&quot;</code></pre>
+<pre><code>## [1] &quot;Scale of Trend Noise: 0.06&quot;</code></pre>
+<pre><code>## [1] &quot;Scale of Slope Noise: 0.68&quot;</code></pre>
+<p>Note how the scale of the trend noise is quite small which means that we will not see a strong random walk behavior on the trend.</p>
+<p>Also note how we were able to sample the different noise values independently for each time step. We can add them up according to our model by iterating over the time steps. In the final step, we draw the observations from the Normal distribution with mean equal to the trend.</p>
+<pre class="r"><code>mu &lt;- rep(NA, T)
+delta &lt;- rep(NA, T)
+
+mu[1] &lt;- mu_err[1]
+delta[1] &lt;- delta_err[1]
+
+for (t in 2:T) {
+  mu[t] &lt;- mu[t-1] + delta[t-1] + s_level * mu_err[t]
+  delta[t] &lt;- delta[t-1] + s_slope * delta_err[t]
+}
+
+y &lt;- rnorm(T, mu, s_obs)</code></pre>
+<p>The time series looks as follows:</p>
+<p><img src="/post/2020-06-07-rediscovering-bayesian-structural-time-series_files/figure-html/unnamed-chunk-8-1.png" width="672" /></p>
+<p>But we can also stylize it differently. The next plot shows the trend <span class="math inline">\(\mu_t\)</span> as the grey line, the observations <span class="math inline">\(y_t\)</span> as dots with size scaled according to the size of the change <span class="math inline">\(\delta_t\)</span> in trend at time <span class="math inline">\(t\)</span>.</p>
+<p><img src="/post/2020-06-07-rediscovering-bayesian-structural-time-series_files/figure-html/unnamed-chunk-9-1.png" width="672" /></p>
+</div>
+<div id="estimating-the-model" class="section level2">
+<h2>Estimating the Model</h2>
+<p>While there may be more efficient inference methods for this model (Kalman filter) and the ready-to-use <a href="https://cran.r-project.org/web/packages/bsts/index.html"><code>bsts</code></a> package, we <em>can</em> take the specification above to define a Stan model and run Bayesian inference via Hamiltonian Monte-Carlo.</p>
+<p>A simple implementation of the local-linear trend model in Stan code looks quite similar to the R code we used to generate the example time series:</p>
+<pre class="r"><code>library(rstan)
+rstan_options(auto_write = TRUE)
+options(mc.cores = parallel::detectCores())
+
+llt_model &lt;- stan_model(&quot;local_linear_trend.stan&quot;,
+                        model_name = &quot;local_linear_trend&quot;)</code></pre>
+<pre><code>## S4 class stanmodel &#39;local_linear_trend&#39; coded as follows:
+## // https://discourse.mc-stan.org/t/bayesian-structural-time-series-modeling/2256/2
+## 
+## data {
+##   int &lt;lower=0&gt; T;
+##   vector[T] y;
+## }
+## parameters {
+##   vector[T] mu_err;
+##   vector[T] delta_err;
+##   real &lt;lower=0&gt; s_obs;
+##   real &lt;lower=0&gt; s_slope;
+##   real &lt;lower=0&gt; s_level;
+## }
+## transformed parameters {
+##   vector[T] mu;
+##   vector[T] delta;
+##   mu[1] = mu_err[1];
+##   delta[1] = delta_err[1];
+##   for (t in 2:T) {
+##     mu[t] = mu[t-1] + delta[t-1] + s_level * mu_err[t];
+##     delta[t] = delta[t-1] + s_slope * delta_err[t];
+##   }
+## }
+## model {
+##   s_obs ~ normal(5,10);
+##   s_slope ~ normal(0,1);
+##   s_level ~ normal(0,1);
+##   
+##   mu_err ~ normal(0,1);
+##   delta_err ~ normal(0,1);
+##   
+##   y ~ normal(mu, s_obs);
+## }</code></pre>
+<p>In the next step, we fit the model to the data generated above.</p>
+<pre class="r"><code>llt_fit &lt;- sampling(object = llt_model, 
+                    data = list(T = T, y = y),
+                    chains = 4,
+                    iter = 4000,
+                    seed = 357,
+                    verbose = TRUE,
+                    control = list(adapt_delta = 0.95))</code></pre>
+<p>For the three scale parameters, we get the following summary statistics of the samples from their posterior distributions:</p>
+<pre class="r"><code>print(llt_fit, pars = c(&quot;s_obs&quot;, &quot;s_level&quot;, &quot;s_slope&quot;))</code></pre>
+<pre><code>## Inference for Stan model: local_linear_trend.
+## 4 chains, each with iter=4000; warmup=2000; thin=1; 
+## post-warmup draws per chain=2000, total post-warmup draws=8000.
+## 
+##         mean se_mean   sd 2.5%  25%  50%  75% 97.5% n_eff Rhat
+## s_obs   9.20    0.01 1.13 7.27 8.41 9.10 9.89 11.64  7350    1
+## s_level 0.74    0.01 0.57 0.03 0.29 0.63 1.06  2.12  6384    1
+## s_slope 0.67    0.00 0.30 0.24 0.45 0.62 0.83  1.37  3830    1
+## 
+## Samples were drawn using NUTS(diag_e) at Fri May  8 20:42:10 2020.
+## For each parameter, n_eff is a crude measure of effective sample size,
+## and Rhat is the potential scale reduction factor on split chains (at 
+## convergence, Rhat=1).</code></pre>
+</div>
+<div id="visualizing-the-fitted-model" class="section level2">
+<h2>Visualizing the Fitted Model</h2>
+<p>We can use the excellent <code>tidybayes</code> model by Matthew Kay to visualize the fitted model. First off, let’s look at the posterior distributions for the scale parameters for each of the four Markov chains:</p>
+<p><img src="/post/2020-06-07-rediscovering-bayesian-structural-time-series_files/figure-html/unnamed-chunk-16-1.png" width="672" /></p>
+<p>While this is nice, wait until you see the following.</p>
+<p>We can visualize the estimated posterior distributions of the slope of the trend, <span class="math inline">\(\delta_t\)</span>, over time. Larger values in absolute terms correspond to period where the overall level of the time series will change more rapidly, while positive values correspond to periods of increasing trend and a negative slope corresponds to periods of decreasing trend.</p>
+<p><img src="/post/2020-06-07-rediscovering-bayesian-structural-time-series_files/figure-html/unnamed-chunk-17-1.png" width="672" /></p>
+<p>In just the same way, we can also visualize the posterior distribution of the trend <span class="math inline">\(\mu_t\)</span> over time. The trend increases as the slope above has positive values, then becomes constant as the slope hovers around 0, and changes to decreasing as the slope drops below 0.</p>
+<p><img src="/post/2020-06-07-rediscovering-bayesian-structural-time-series_files/figure-html/unnamed-chunk-18-1.png" width="672" /></p>
+<p>Given the posterior of the trend, we can also sample from our model (i.e., our data generating process) to get samples from the posterior predictive distribution. That is, we now look at the uncertainty of the observations instead of parameters. Note that the y-axis has the same scale as in the graph of the trend before. The different scale of the uncertainty is the result of the additional observation noise <span class="math inline">\(\epsilon_{Y,t}\)</span>. We can say, for example, that the <em>trend</em> is larger than 0 with probability larger than 99% at time step 20. However, <em>observations</em> are still expected to be below 0 with about 10%.</p>
+<p>Additionally, we plot the actual observations again with size according to the median of <span class="math inline">\(\delta_t\)</span>’s posterior distribution.</p>
+<p><img src="/post/2020-06-07-rediscovering-bayesian-structural-time-series_files/figure-html/unnamed-chunk-19-1.png" width="672" /></p>
+<p>Finally, we can generate and graph the forecast of the time series from the estimated model for the next 10 time steps. Note that all the uncertainty from the parameters’ posterior distributions has been propagated into this forecast distribution.</p>
+<p><img src="/post/2020-06-07-rediscovering-bayesian-structural-time-series_files/figure-html/unnamed-chunk-20-1.png" width="672" /></p>
+<p>We can generate new observations that continue the original time series according to the random sampling scheme above and compare against the forecast:</p>
+<p><img src="/post/2020-06-07-rediscovering-bayesian-structural-time-series_files/figure-html/unnamed-chunk-21-1.png" width="672" /></p>
+<p>These realized values are of course only one of many possible future outcomes: Had I chosen a different seed, we would have sampled different observations from the same model.</p>
+<p>To illustrate the point that there are many different legitimate future outcomes, we can sample paths from our model and visualize those instead of the intervals.</p>
+<p><img src="/post/2020-06-07-rediscovering-bayesian-structural-time-series_files/figure-html/unnamed-chunk-22-1.gif" /><!-- --></p>
+</div>
+<div id="where-to-go-from-here" class="section level2">
+<h2>Where to Go From Here</h2>
+<p>So far I’ve only touched the surface of what’s possible with (Bayesian) structural time series models. But the derivation above has helped me to really come to grips with the idea and sold me on this way of phrasing the time series problem. As described in the <a href="https://www.cambridge.org/core/books/forecasting-structural-time-series-models-and-the-kalman-filter/CE5E112570A56960601760E786A5E631#fndtn-information">information on Andrew Harvey’s book</a> on the topic:</p>
+<blockquote>
+<p>Unlike the traditional ARIMA models, structural time series models consist explicitly of unobserved components, such as trends and seasonals, which have a direct interpretation.</p>
+</blockquote>
+<p>Building on these first steps, we can go further. We could, for example, make use of the interpretability of this model family to <em>automatically</em> provide explanations of the estimated models and their forecasts. This might support conversations with stakeholders.</p>
+<p>Another favorite of mine are prior-predictive checks. Combined with Bayesian structural time series models, we would check for a given specification of model and prior distributions which kind of time series that model generates—similar to how we generated a single time series above. Based on this we could adjust the prior distributions to build models that correspond to our prior belief.</p>
+<p>An obvious next step would be the implementation of further variants of structural time series models: For example, models with different trend specifications, models that include seasonal components, or with distributions different from the Normal distribution used above. The <code>bsts</code> package and <a href="http://www.unofficialgoogledatascience.com/2017/07/fitting-bayesian-structural-time-series.html">Steven L. Scott’s blog post</a> on the topic are a great place to start on this.</p>
+<p>Lastly, the code to reproduce the examples above is <a href="https://github.com/timradtke/bsts-stan">available on Github</a>.</p>
+</div>
+<div id="references" class="section level2">
+<h2>References</h2>
+<p>Steven L. Scott and Hal R. Varian (2014). Predicting the present with Bayesian structural time series. International Journal of Mathematical Modelling and Numerical Optimisation, vol. 5 (2014), pp. 4-23, <a href="https://research.google/pubs/pub41335" class="uri">https://research.google/pubs/pub41335</a>.</p>
+<p>Kim Larsen (2016). Sorry ARIMA, but I’m Going Bayesian. Stitch Fix MultiThreaded blog, <a href="https://multithreaded.stitchfix.com/blog/2016/04/21/forget-arima/" class="uri">https://multithreaded.stitchfix.com/blog/2016/04/21/forget-arima/</a>.</p>
+<p>Steven L. Scott (2017). Fitting Bayesian Structural Time Series with the bsts R Package. The Unofficial Google Data Science blog, <a href="http://www.unofficialgoogledatascience.com/2017/07/fitting-bayesian-structural-time-series.html" class="uri">http://www.unofficialgoogledatascience.com/2017/07/fitting-bayesian-structural-time-series.html</a>.</p>
+<p>Sean J. Taylor and Benjamin Letham (2018). Forecasting at Scale, The American Statistician 72(1):37-45, <a href="https://peerj.com/preprints/3190.pdf" class="uri">https://peerj.com/preprints/3190.pdf</a>.</p>
+<p>Andrew C. Harvey (1990). Forecasting, Structural Time Series Models and the Kalman Filter. Cambridge University Press, <a href="https://doi.org/10.1017/CBO9781107049994" class="uri">https://doi.org/10.1017/CBO9781107049994</a>.</p>
+<p>Bob Carpenter, Andrew Gelman, Matthew D. Hoffman, Daniel Lee, Ben Goodrich, Michael Betancourt, Marcus Brubaker, Jiqiang Guo, Peter Li, and Allen Riddell (2017). Stan: A probabilistic programming language. Journal of Statistical Software 76(1). doi: <a href="https://www.jstatsoft.org/article/view/v076i01">10.18637/jss.v076.i01</a>.</p>
+<p>Stan Development Team (2018). RStan: the R interface to Stan. R package version 2.17.3. <a href="http://mc-stan.org" class="uri">http://mc-stan.org</a>.</p>
+<p>Matthew Kay (2020). tidybayes: Tidy Data and Geoms for Bayesian Models. doi: 10.5281/zenodo.1308151, R package version 2.0.3.9000, <a href="http://mjskay.github.io/tidybayes/" class="uri">http://mjskay.github.io/tidybayes/</a>.</p>
+<p>Steven L. Scott (2020). bsts: Bayesian Structural Time Series, R Package version 0.9.5, <a href="https://cran.r-project.org/web/packages/bsts/index.html" class="uri">https://cran.r-project.org/web/packages/bsts/index.html</a>.</p>
+<p>Giovanni Petris (2020). dlm: Bayesian and Likelihood Analysis of Dynamic Linear Models, R Package version 1.1-5, <a href="https://cran.r-project.org/web/packages/dlm/index.html" class="uri">https://cran.r-project.org/web/packages/dlm/index.html</a>.</p>
+<p>Stan Prior Choice Recommendations. <a href="https://github.com/stan-dev/stan/wiki/Prior-Choice-Recommendations" class="uri">https://github.com/stan-dev/stan/wiki/Prior-Choice-Recommendations</a>.</p>
+<p>Notes by Ben Goodrich on implementing latent time series models in Stan on the Stan Discourse. <a href="https://discourse.mc-stan.org/t/bayesian-structural-time-series-modeling/2256/2" class="uri">https://discourse.mc-stan.org/t/bayesian-structural-time-series-modeling/2256/2</a>.</p>
+<p>Marko Laine (2019). Introduction to Dynamic Linear Models for Time Series Analysis. arXiv Preprint, <a href="https://arxiv.org/pdf/1903.11309.pdf" class="uri">https://arxiv.org/pdf/1903.11309.pdf</a>.</p>
+<p>Tim Radtke (2020). The Causal Effect of New Year’s Resolutions. Minimize Regret blog, <a href="https://minimizeregret.com/post/2020/01/18/the-causal-effect-of-new-years-resolutions/" class="uri">https://minimizeregret.com/post/2020/01/18/the-causal-effect-of-new-years-resolutions/</a>.</p>
+</div>

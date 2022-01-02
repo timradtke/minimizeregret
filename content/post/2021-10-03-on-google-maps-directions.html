@@ -1,0 +1,53 @@
+---
+title: On Google Maps Directions
+author: Tim Radtke
+date: '2021-10-03'
+slug: on-google-maps-directions
+categories:
+  - Data Science
+tags:
+  - optimization
+  - Visualization
+  - UI
+  - product
+---
+
+<script src="/rmarkdown-libs/header-attrs/header-attrs.js"></script>
+<link href="/rmarkdown-libs/anchor-sections/anchor-sections.css" rel="stylesheet" />
+<script src="/rmarkdown-libs/anchor-sections/anchor-sections.js"></script>
+
+
+<p>Google Maps and its Directions feature are the kind of data science product everyone wished they’d be building. It augments the user, enabling decision-making while driving.</p>
+<p>Directions exemplifies the difference between prediction and prescription. Google Maps doesn’t just expose data, and it doesn’t provide a raw analysis by-product like SHAP values. It processes historical and live data to predict the future and to optimize my route based on it, returning only the refined recommendations.</p>
+<p>I recently started to drive more and Google Maps became my copilot. Previously, I used its Directions to plan my bike route or when taking public transport, but certain information are only revealed while driving. I got to experience a new dimension of Google Maps.</p>
+<div class="figure">
+<img src="/post/google_maps_eta_range.png" alt="" />
+<p class="caption">Given a user’s intended arrival time, Google Maps Directions shows a range of estimated travel times for the suggested routes.</p>
+</div>
+<p>For example, I knew that you can provide a time at which you would like to arrive at your destination. Google Maps would then suggest public transport connections that are scheduled to bring you there in time. Perhaps naturally, you can ask for a suggested departure time when taking the car.<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a> In contrast to the public transport interface, however, the car view displays uncertainty in the estimated ride duration due to ever changing traffic conditions during Berlin’s rush hour. That’s fantastic! Public transport travel times are very predictable with sometimes unpredictable fluctuations, whereas travel by car warrants an interval with its constantly evolving traffic.</p>
+<p>A point estimate will always be wrong. But even this simple interval let’s me take a decision that fits my risk profile: If I’m about to embark on a date, I will leave according to the upper end of the interval to decrease the chances of arriving to late.</p>
+<p>Sure, as a statistician I would love to see the entire distribution of historical trips this estimate is based on, or at least know which quantiles of the forecast distribution are displayed here. But even the range alone provides so much more information than a single value, enabling much better decisions while barely adding complexity to the UI. It doesn’t scream “DATA SCIENCE!” into the user’s face. It’s ambient information.</p>
+<div class="figure">
+<img src="/post/google_maps_california.png" alt="" />
+<p class="caption">Google Maps Directions route options for a trip from the Google office in San Francisco to Apple Park.</p>
+</div>
+<p>Google Maps not only provides options that will bring me to my destination but also a measure to choose from the options. Moreover, once I have chosen and embarked on one of the suggested routes, Directions continually analyzes and optimizes my path, recommending adjustments given the updated environment and future options. If a faster route becomes available, Directions will notify and allow me to switch while displaying the expected improvement so I can judge whether the adjustment is worth it.</p>
+<div class="figure">
+<img src="/post/google_maps_autobahn_crash.png" alt="" />
+<p class="caption">On the Autobahn, Google Maps Directions informs the user about a delay as a result of a crash ahead.</p>
+</div>
+<p>Lastly, yet from a behavioral perspective perhaps most importantly, Directions assures me that my current path is optimal in the moment when it looks not ideal, or at least explains why things are not going as smoothly as expected.</p>
+<p>When people clamor for explanations of machine learning-based predictions, then this is what they need. Clearly interpretable in the context of the user’s problem to reduce the user’s surprisal and to keep the user’s trust even when an adjustment of the previously suggested optimal route is required.</p>
+<p>There will be no situation in which the user looks away for ten minutes and suddenly the estimated time of arrival will have changed by an hour; Google Maps will not switch optimal routes without asking, just because a model output changes. Everything interacts with the user, informs the user, and requires input from the user while notifying only when necessary.</p>
+<div id="take-it-and-run-with-it" class="section level2">
+<h2>Take it and run with it</h2>
+<p>Yes, Google Maps benefits from being based on a map and thereby being inherently visual. Still, Google Maps Directions<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a> is a prime example of what a great data product can look like. The fact alone that not only predictions but results of an optimization based on predictions are shown. Paired with uncertainty estimates where helpful, as well as notifications informing about changes in clearly understandable text, Directions becomes an excellent augmentation layer.</p>
+<p>Let’s build more like this.</p>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p>Though I’m only able to do it in the interface when first asking it in the public transport section and then switching to the driving section.<a href="#fnref1" class="footnote-back">↩︎</a></p></li>
+<li id="fn2"><p>And likely similar features in Apple Maps or HERE.<a href="#fnref2" class="footnote-back">↩︎</a></p></li>
+</ol>
+</div>

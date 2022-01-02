@@ -1,0 +1,23 @@
+---
+title: Modeling Short Time Series with Prior Knowledge
+author: Tim Radtke
+date: '2019-04-16'
+slug: modeling-short-time-series-with-prior-knowledge
+categories:
+  - forecasting
+tags:
+  - Bayesian Inference
+  - Probabilistic Programming
+  - time series
+  - Model-based machine learning
+---
+
+
+
+<p>I just published a longer case study, <a href="https://minimizeregret.com/short-time-series-prior-knowledge/">Modeling Short Time Series with Prior Knowledge: What ‘Including Prior Information’ really looks like</a>.</p>
+<p>It is generally difficult to model time series when there is insuffient data to model a (suspected) long seasonality. We show how this difficulty can be overcome by learning a seasonality on a different, long related time series and transferring the posterior as a prior distribution to the model of the short time series. The result is a forecast that is believable and can be used for decisions in a business context. In contrast to traditional methods that are not able to incorporate the long seasonality, we observe a drastic increase in common evaluation metrics. Default models in the <code>forecast</code> and <code>prophet</code> R packages fail to produce good forecasts on this example.</p>
+<p>Find the <a href="https://minimizeregret.com/short-time-series-prior-knowledge/">case study here</a>, and the <a href="https://github.com/timradtke/short-time-series">data and code on Github</a>.</p>
+<div class="figure">
+<img src="/post/final_forecast.png" />
+
+</div>

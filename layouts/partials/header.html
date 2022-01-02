@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="{{ .Site.LanguageCode }}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Minimize Regret by Tim Radtke"/>
+<meta name="author" content="Tim Radtke">
+<meta name="keywords" content="Minimize Regret, Data Science, Machine Learning, Statistics, Forecasting, Time Series, Optimization"/>
+<meta name="theme-color" content="#2DCC9A"/>
+<title>{{ .Site.Title }} - {{ .Title }}</title>
+<link rel="stylesheet" href="{{ "/css/style.css" | relURL }}" />
+  {{ partial "head_custom.html" . }}
+</head>
+
+<link rel="apple-touch-icon" sizes="180x180" href="/graphics/min_r_180x180.png">
+<link rel="icon" type="image/png" href="/graphics/min_r_180x180.png"/>
+<link rel="icon" type="image/png" sizes="32x32" href="/graphics/min_r_32x32.png">
+<link rel="icon" type="image/png" sizes="16x16" href="/graphics/min_r_16x16.png">
+<div class="container">
+<header role="banner">
+<nav role="navigation">
+<a href="/" class="logo"><h1>Tim Radtke</h1></a> <span>Winners minimize regret.</span>
+<ul class="menu">
+      {{ range .Site.Menus.main }}
+      <li><a href="{{ .URL | relURL }}">{{ .Name }}</a></li>
+      {{ end }}
+</ul>
+</nav>
+</header>
+
+<hr/>

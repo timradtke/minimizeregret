@@ -1,0 +1,21 @@
+---
+title: The Probabilistic Programming Workflow
+author: Tim Radtke
+date: '2019-03-23'
+slug: the-probabilistic-programming-workflow
+categories:
+  - Machine Learning
+tags:
+  - Probabilistic Programming
+  - Model-based machine learning
+  - Bayesian Inference
+  - Statistics
+---
+
+Last week, I gave a presentation about the concept of and intuition behind probabilistic programming and model-based machine learning in front of a general audience. You can read my [extended notes here](https://minimizeregret.com/probprog/).
+
+Drawing on ideas from Winn and Bishop's ["Model-Based Machine Learning "](http://mbmlbook.com/Introduction.html) and van de Meent et al.'s ["An Introduction to Probabilistic Programming"](https://arxiv.org/abs/1809.10756), I try to show why the combination of a data-generating process with an abstracted inference is a powerful concept by walking through the example of a simple survival model.
+
+*Find my extended presentation notes [here](https://minimizeregret.com/probprog/).*
+
+Preparing this document gave me an excuse to try the wonderful [Tufte handout style for R Markdown documents](https://rstudio.github.io/tufte/) by JJ Allaire and Yihui Xie. Furthermore, inspired by the work of Jessica Hullman, Matthew Kay, and Claus Wilke, I gave my best shot at creating [hypothetical outcome plots](https://resources.rstudio.com/rstudio-conf-2019/visualizing-uncertainty-with-hypothetical-outcomes-plots) to visualize the uncertainty induced by the prior distribution. I couldn't have done it without David Robinson's and Thomas Lin Pedersen's [gganimate](https://github.com/thomasp85/gganimate) package. 

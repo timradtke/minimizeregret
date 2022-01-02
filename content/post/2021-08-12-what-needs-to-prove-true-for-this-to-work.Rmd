@@ -1,0 +1,33 @@
+---
+title: What Needs to Prove True for This to Work?
+author: Tim Radtke
+date: '2021-08-12'
+slug: what-needs-to-prove-true-for-this-to-work
+categories:
+  - Data Science
+tags:
+  - data science
+  - project management
+---
+
+Data science projects are a tricky bunch. They entice you with challenging problems and promise a huge return if successful. In contrast to more traditional software engineering projects, however, data science projects entail more upfront uncertainty: You’ll not know until you tried whether the technology is *good enough* to solve the problem. Consequently, a data science endeavor fails more often, or doesn’t turn out to be the smash hit you and your stakeholders expected it to be.
+
+To get started working on projects that *are* sucessful, you want to cut your losses on projects that will not work out; there is no honor in sticking with a problem just because you started. Don’t get caught up in a project that simmers on and on and doesn’t realize the value that was promised in the original slide deck. Even better: Don’t start the project that will not succeed.
+
+While this last recommendation is hard if not impossible to get right, ask yourself “What needs to prove true for this to work?” to make it a bit easier.^[The first time I saw this was in the book [“How Will You Measure Your Life?” by Clayton M. Christensen, James Allworth, and Karen Dillon](https://www.amazon.com/How-Will-Measure-Your-Life/dp/0062102419), which is excellent. They in turn attribute it to a process called “discovery-driven planning” by Ian MacMillan and Rita McGrath.] Asking this question is a powerful way to drill into the assumptions that underlie any project—data science or not. 
+
+By asking “What needs to prove true for this to work?” you as data scientist are explicit about the assumptions that are made on your contribution to a new project. You start validating whether you can deliver what others hope you will deliver.
+
+For example, let’s assume your task is to provide an image classification algorithm that improves over an existing method. The images are scans of parts of human patients and will need to be acquired. An implicit assumption is that you will evaluate and compare the performance of the algorithms. One easily neglects that this requires observations beyond those used to train the algorithm—potentially even quite many if you want to provide any useful level of certainty. Thus, before committing resources to the project, the required amount of samples can be determined and communicated.^[See the paper [“Sample Size Planning for Classification Models”](https://arxiv.org/abs/1211.1323) (2012) by Beleites et al. for an example of what this can look like.] 
+
+For each project, you’ll encounter several assumptions that need to prove true. You can rank them by their importance and their uncertainty. Similarly to how an active learning algorithm selects the next observation to be labelled, you need to clarify the most important assumptions with the largest uncertainty first and then proceed to the next one. Or, if you can’t clarify them, choose a project for which the assumptions are not as uncertain.
+
+All this is encapsulated in data scientists’ natural drive to access a project’s data as soon as possible. Nothing reduces the general uncertainty more than having a look at the data you’re supposed to work with.
+
+There is a flip side to this: If you don’t yet have access to the data or when data acquisition is part of the project, you can still (or likely have to) formalize what you need the data to look like to deliver a useful product. You could, for example, simulate data to get a feeling for how the data can be analyzed, and to show at what noise level which model performance can be achieved.
+
+If you do have data, establish a human baseline performance. How well can you predict the data? If you can’t do it, why do you expect the algorithm to be able to do it? Think about it like an econometrics professor: Which theory would explain that your available features can predict the outcome?
+
+All this applies to every project you are about to embark on, but also to different steps within a project. To say it in the words of [Christensen, Allworth, and Dillon](https://www.amazon.com/How-Will-Measure-Your-Life/dp/0062102419):
+
+> [K]eep thinking about the most important assumptions that have to prove true, and how you can swiftly and inexpensively test if they are valid. Make sure you are being realistic about the path ahead of you.

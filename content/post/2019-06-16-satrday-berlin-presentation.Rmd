@@ -1,0 +1,25 @@
+---
+title: satRday Berlin Presentation
+author: Tim Radtke
+date: '2019-06-16'
+slug: satrday-berlin-presentation
+categories:
+  - Presentation
+tags:
+  - Bayesian Inference
+  - forecasting
+  - Probabilistic Programming
+  - time series
+  - satRday
+  - conferences
+---
+
+*My satRday Berlin slides on "Modeling Short Time Series" [are available here](https://minimizeregret.com/presentations/satrday_berlin_modeling_short_time_series.pdf).*
+
+This saturday, June 15, Berlin had its first [satRday conference](https://satrdays.org). I eagerly followed the hashtags of satRday Amsterdam last year and satRday Capetown the year before that on Twitter. Thanks to Noa Tamir, Jakob Graff, Steve Cunningham, [and many others](https://berlin2019.satrdays.org/#team), we got a [conference in Berlin](https://berlin2019.satrdays.org) as well.
+
+When I saw the call for papers, I jumped at the opportunity to present, trying what it feels like to be on the other side of the microphone; being in the hashtag instead of following it. Thanks again to the organizers for having me, it has been a fantastic experience. The conference format is accessible and a lot of fun.
+
+You can find my slides from yesterday on ["Modeling Short Time Series" as PDF here](https://minimizeregret.com/presentations/satrday_berlin_modeling_short_time_series.pdf). The slides are based [on this blog post](https://minimizeregret.com/short-time-series-prior-knowledge/) which provides more context.
+
+![Photo taken by [Steve Cunningham](https://twitter.com/stejc/status/1139888894437220352).](/post/satrday_photo.png)

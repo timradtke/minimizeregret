@@ -1,0 +1,291 @@
+---
+title: 'Are You Sure This Embedding Is Good Enough?'
+author: Tim Radtke
+date: '2020-04-26'
+slug: are-you-sure-this-embedding-is-good-enough
+categories:
+  - few-shot image classification
+tags:
+  - embedding
+  - image classification
+  - few-shot
+---
+
+
+
+<p>Suppose you are given a data set of five images to train on, and then have to classify new images with your trained model. Five training samples are in general not sufficient to train a state-of-the-art image classification model, thus this problem is hard and earned it’s own name: few-shot image classification. A lot has been written on few-shot image classification and complex approaches have been suggested.<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a> Tian et al. (2020), however, suggest it suffices to take an embedding from a different image classification task, extract features from the five images via the embedding, and to train the few-shot model on the embedded version of the five images. For prediction, the new image can be embedded as well and then predicted via the trained model. This alone beats all previous approaches:</p>
+<blockquote>
+<p>In this work, we show that a simple baseline: learning a supervised or self- supervised representation on the meta-training set, followed by training a linear classifier on top of this representation, outperforms state-of-the-art few-shot learning methods.</p>
+</blockquote>
+<p>The premise of “<a href="https://arxiv.org/abs/2003.11539">Rethinking Few-Shot Image Classification: a Good Embedding Is All You Need?</a>” by Tian et al. (2020) sounds too good to be true: They essentially follow the steps you might know from <a href="https://blog.keras.io/building-powerful-image-classification-models-using-very-little-data.html">fine-tuning of</a> or <a href="https://www.tensorflow.org/tutorials/images/transfer_learning">transfer learning with</a> a pre-trained image classifier—with the only difference that they use <em>five</em> images to fit a new head for their model.</p>
+<div id="a-naive-example-with-fashion-mnist-and-umap" class="section level3">
+<h3>A Naive Example with (Fashion-)MNIST and UMAP</h3>
+<p>To reason in more detail about the paper’s premise, let’s look at a simple example: Suppose we have five images from the <a href="https://github.com/zalandoresearch/fashion-mnist">Fashion-MNIST</a> data set; are we able to predict a new image from the same data set if all we have are those five images and a pre-trained embedding? As embedding, we’ll use a simple UMAP trained on a “similar” data set: MNIST.</p>
+<p>Since Fashion-MNIST was designed as drop-in replacement for MNIST, we are dealing in both cases with 28x28 grey-scale pixels. At the same time, it isn’t obvious that the embedding trained on MNIST is a useful feature extraction device for Fashion-MNIST.</p>
+<p>So the steps are as follows:</p>
+<ol style="list-style-type: decimal">
+<li>Train UMAP embedding on MNIST train data set<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a></li>
+<li>Project the Fashion MNIST train and test data onto the trained embedding</li>
+<li>Take five random samples from the Fashion MNIST train data and predict a sample from the Fashion MNIST test data using the nearest neighbor<a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a></li>
+</ol>
+<p>As usual with UMAP, we get a useful embedding of the MNIST data set. Here, we show the MNIST test set that has been projected onto this embedding:</p>
+<div class="figure"><span id="fig:unnamed-chunk-4"></span>
+<img src="/post/2020-04-26-are-you-sure-this-embedding-is-good-enough_files/figure-html/unnamed-chunk-4-1.png" alt="10,000 samples from the MNIST train and test data, respectively, projected onto a UMAP embedding trained on the full MNIST train data set." width="672" />
+<p class="caption">
+Figure 1: 10,000 samples from the MNIST train and test data, respectively, projected onto a UMAP embedding trained on the full MNIST train data set.
+</p>
+</div>
+<p>We see that even the <em>MNIST</em> test data would not be predicted perfectly by a k-nearest neighbor classifier: Not only are some samples projected onto the “cluster” of a different class, but the margins between clusters are quite small. This makes it easy for a sample to fall into the correct cluster but to then be classified based on a neighbor from a neighboring cluster.</p>
+<p>We can now project the Fashion MNIST data onto the same embedding to evaluate how good our classification performance is when all we have are five samples from Fashion MNIST and the pretrained MNIST embedding. In the following, <strong>UMAP_1NN</strong> corresponds to the approach of embedding the data before classification via 1-nearest-neighbor, while <strong>RANDOM</strong> assigns a random label from the 10 classes and <strong>RANDOM_SHOT</strong> picks the label randomly from one of the <span class="math inline">\(n\)</span> training examples.</p>
+<table>
+<caption><span id="tab:unnamed-chunk-5">Table 1: </span>Accuracy on Fashion MNIST test set using five training examples from Fashion MNIST train of which one has the correct class. The UMAP embedding was trained on the MNIST train data.</caption>
+<thead>
+<tr class="header">
+<th align="right">UMAP_1NN</th>
+<th align="right">RANDOM</th>
+<th align="right">RANDOM_SHOT</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="right">0.369</td>
+<td align="right">0.101</td>
+<td align="right">0.199</td>
+</tr>
+</tbody>
+</table>
+<p>When we consider the accuracy by class, we observe that some classes are easier to predict than others.</p>
+<table>
+<caption><span id="tab:unnamed-chunk-6">Table 2: </span>Accuracy by class on Fashion MNIST test set using five training examples from Fashion MNIST train of which one has the correct class. The UMAP embedding was trained on the MNIST train data.</caption>
+<thead>
+<tr class="header">
+<th align="right">CLASS</th>
+<th align="right">UMAP_1NN</th>
+<th align="right">RANDOM</th>
+<th align="right">RANDOM_SHOT</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="right">0</td>
+<td align="right">0.436</td>
+<td align="right">0.106</td>
+<td align="right">0.204</td>
+</tr>
+<tr class="even">
+<td align="right">1</td>
+<td align="right">0.426</td>
+<td align="right">0.109</td>
+<td align="right">0.188</td>
+</tr>
+<tr class="odd">
+<td align="right">2</td>
+<td align="right">0.325</td>
+<td align="right">0.089</td>
+<td align="right">0.189</td>
+</tr>
+<tr class="even">
+<td align="right">3</td>
+<td align="right">0.341</td>
+<td align="right">0.105</td>
+<td align="right">0.197</td>
+</tr>
+<tr class="odd">
+<td align="right">4</td>
+<td align="right">0.435</td>
+<td align="right">0.108</td>
+<td align="right">0.206</td>
+</tr>
+<tr class="even">
+<td align="right">5</td>
+<td align="right">0.297</td>
+<td align="right">0.103</td>
+<td align="right">0.198</td>
+</tr>
+<tr class="odd">
+<td align="right">6</td>
+<td align="right">0.233</td>
+<td align="right">0.091</td>
+<td align="right">0.198</td>
+</tr>
+<tr class="even">
+<td align="right">7</td>
+<td align="right">0.434</td>
+<td align="right">0.093</td>
+<td align="right">0.208</td>
+</tr>
+<tr class="odd">
+<td align="right">8</td>
+<td align="right">0.349</td>
+<td align="right">0.103</td>
+<td align="right">0.210</td>
+</tr>
+<tr class="even">
+<td align="right">9</td>
+<td align="right">0.413</td>
+<td align="right">0.104</td>
+<td align="right">0.193</td>
+</tr>
+</tbody>
+</table>
+<p>To put these results into context, we perform a couple of other combinations: We can vary the training data for the UMAP embedding (use either the MNIST or the Fashion MNIST training set), and then evaluate how well we can predict the corresponding test sets. Here, it is especially interesting to compare how well we can predict MNIST using an MNIST embedding, and Fashion MNIST using a Fashion MNIST embedding–this is essentially the best we can hope for when predicting Fashion MNIST using MNIST embedding, and MNIST using the Fashion MNIST embedding.</p>
+<p>Additionally, we can vary the number of few shot examples. Note that we always include exactly one sample from the correct class to have any chance of “learning” the new concept. This means, however, that with two samples we have a 50-50 chance of randomly assigning the correct class. Thus it’s important to compare the <strong>UMAP_1NN</strong> performance against the performance of picking a random sample from the few shots (column <code>RS</code>).</p>
+<p>Looking at the results, there are a few things to note.</p>
+<p>First, observe how the performance generally degredates as the number of few shot training examples increases: Apparently this increases the chances of picking the wrong neighbor, since the share of training examples with the correct class drops from 50% to 20% to 10%—this is also seen in the <code>RS</code> column. As we add more training examples, chances increase that an example from a wrong class is embedded close to the test observation. If we could increase the training observations much more as well as the number of examples from the correct class, the performance should improve with <span class="math inline">\(n\)</span> as usually expected.</p>
+<p>Note that we can predict Fashion MNIST better than random using the MNIST embedding; but we essentially predict randomly when classifying numbers given the Fashion MNIST embedding. This is somewhat surprising given that classifying Fashion MNIST is generally harder than classifying MNIST. Yet, the MNIST embedding appears more useful for the task at hand.</p>
+<p>Also note that we can predict the test sets quite well if we use the embedding trained on the corresponding train set: We achieve a 60% accuracy for both Fashion MNIST and MNIST when using 10 training samples.<a href="#fn4" class="footnote-ref" id="fnref4"><sup>4</sup></a> Maybe we would actually expect better results given <a href="http://yann.lecun.com/exdb/mnist/">how simple MNIST is</a>?</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">UMAP</th>
+<th align="left">TRAIN</th>
+<th align="left">TEST</th>
+<th align="right">n</th>
+<th align="right">UMAP_1NN</th>
+<th align="right">R</th>
+<th align="right">RS</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">MNIST Train</td>
+<td align="left">F-MNIST Train</td>
+<td align="left">F-MNIST Test</td>
+<td align="right">2</td>
+<td align="right">0.62</td>
+<td align="right">0.10</td>
+<td align="right">0.49</td>
+</tr>
+<tr class="even">
+<td align="left">MNIST Train</td>
+<td align="left">F-MNIST Train</td>
+<td align="left">F-MNIST Test</td>
+<td align="right">5</td>
+<td align="right">0.37</td>
+<td align="right">0.09</td>
+<td align="right">0.20</td>
+</tr>
+<tr class="odd">
+<td align="left">MNIST Train</td>
+<td align="left">F-MNIST Train</td>
+<td align="left">F-MNIST Test</td>
+<td align="right">10</td>
+<td align="right">0.26</td>
+<td align="right">0.10</td>
+<td align="right">0.10</td>
+</tr>
+<tr class="even">
+<td align="left">MNIST Train</td>
+<td align="left">MNIST Test</td>
+<td align="left">MNIST Test</td>
+<td align="right">2</td>
+<td align="right">0.84</td>
+<td align="right">0.10</td>
+<td align="right">0.50</td>
+</tr>
+<tr class="odd">
+<td align="left">MNIST Train</td>
+<td align="left">MNIST Test</td>
+<td align="left">MNIST Test</td>
+<td align="right">5</td>
+<td align="right">0.69</td>
+<td align="right">0.10</td>
+<td align="right">0.20</td>
+</tr>
+<tr class="even">
+<td align="left">MNIST Train</td>
+<td align="left">MNIST Test</td>
+<td align="left">MNIST Test</td>
+<td align="right">10</td>
+<td align="right">0.60</td>
+<td align="right">0.10</td>
+<td align="right">0.10</td>
+</tr>
+<tr class="odd">
+<td align="left">F-MNIST Train</td>
+<td align="left">MNIST Train</td>
+<td align="left">MNIST Test</td>
+<td align="right">2</td>
+<td align="right">0.52</td>
+<td align="right">0.10</td>
+<td align="right">0.51</td>
+</tr>
+<tr class="even">
+<td align="left">F-MNIST Train</td>
+<td align="left">MNIST Train</td>
+<td align="left">MNIST Test</td>
+<td align="right">5</td>
+<td align="right">0.22</td>
+<td align="right">0.10</td>
+<td align="right">0.20</td>
+</tr>
+<tr class="odd">
+<td align="left">F-MNIST Train</td>
+<td align="left">MNIST Train</td>
+<td align="left">MNIST Test</td>
+<td align="right">10</td>
+<td align="right">0.12</td>
+<td align="right">0.11</td>
+<td align="right">0.10</td>
+</tr>
+<tr class="even">
+<td align="left">F-MNIST Train</td>
+<td align="left">F-MNIST Test</td>
+<td align="left">F-MNIST Test</td>
+<td align="right">2</td>
+<td align="right">0.90</td>
+<td align="right">0.10</td>
+<td align="right">0.50</td>
+</tr>
+<tr class="odd">
+<td align="left">F-MNIST Train</td>
+<td align="left">F-MNIST Test</td>
+<td align="left">F-MNIST Test</td>
+<td align="right">5</td>
+<td align="right">0.74</td>
+<td align="right">0.10</td>
+<td align="right">0.20</td>
+</tr>
+<tr class="even">
+<td align="left">F-MNIST Train</td>
+<td align="left">F-MNIST Test</td>
+<td align="left">F-MNIST Test</td>
+<td align="right">10</td>
+<td align="right">0.60</td>
+<td align="right">0.10</td>
+<td align="right">0.10</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<div class="figure"><span id="fig:unnamed-chunk-9"></span>
+<img src="/post/2020-04-26-are-you-sure-this-embedding-is-good-enough_files/figure-html/unnamed-chunk-9-1.png" alt="This figure shows the MNIST test set projected onto a UMAP embedding trained on the Fashion MNIST train data. Also, the Fashion MNIST test set projected onto a UMAP embedding trained on the MNIST train data. In contrast to figure 1 above, we see that the projection *across* data sets does not work too well." width="672" />
+<p class="caption">
+Figure 2: This figure shows the MNIST test set projected onto a UMAP embedding trained on the Fashion MNIST train data. Also, the Fashion MNIST test set projected onto a UMAP embedding trained on the MNIST train data. In contrast to figure 1 above, we see that the projection <em>across</em> data sets does not work too well.
+</p>
+</div>
+</div>
+<div id="questions-raised-by-this-approach" class="section level3">
+<h3>Questions Raised by This Approach</h3>
+<p>Let me be clear that my quick’n’dirty experiment above does not follow the procedure of Tian et al. (2020) too closely: They use a CNN trained for classification as feature extractor (“embedding”) which probably makes more sense than UMAP to embed new “unseen” classes (it also returns more dimensions than just the two I have). Also, I use MNIST and Fashion MNIST which are not used for few-shot learning evaluation.</p>
+<p>Still, I wonder: If I would be faced with an “actual” few-shot learning task in the real world, would I like to rely on some embedding? How do I know that the feature extractor will extract features from my few training samples in a useful way? I certainly wouldn’t have sufficient samples to evaluate the quality of the (pre-trained) embedding for my new images.</p>
+<p>Indeed, the evaluation setup used in Tian et al. (2020) (and, most likely, in the remaining few-shot learning literature) feels too easy: The evaluation only checks whether an approach that has access to a large set of training samples from ImageNet (e.g., bike, panda, cat, …) can learn to classify new classes from ImageNet (e.g., car, chair, dog, …) from few samples. What surprises is me is how related the images are allowed to be—the test of generalization does not appear difficult enough. It’s not like we allow some pre-training on ImageNet and then try to classify different diseases based on CT scans.</p>
+<p>The code used to produce these results is <a href="https://github.com/timradtke/mnist-few-shot">available on Github</a>.</p>
+</div>
+<div id="references" class="section level3">
+<h3>References</h3>
+<p>Thomas Cover, P.E. Hart (1967). <em>Nearest Neighbor Pattern Classification</em>. IEEE Transactions on Information Theory, Vol. IT-13, No. 1.</p>
+<p>Yann LeCun, Corinna Cortes, Christopher J.C. Burges. <em>The MNIST database of handwritten digits</em>. <a href="http://yann.lecun.com/exdb/mnist/" class="uri">http://yann.lecun.com/exdb/mnist/</a></p>
+<p>Leland McInnes, John Healy, James Melville (2018). <em>UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction</em>. <a href="https://arxiv.org/abs/1802.03426" class="uri">https://arxiv.org/abs/1802.03426</a></p>
+<p>Yonglong Tian, Yue Wang, Dilip Krishnan, Joshua B. Tenenbaum, Phillip Isola (2020). <em>Rethinking Few-Shot Image Classification: a Good Embedding Is All You Need?</em>. <a href="https://arxiv.org/abs/2003.11539" class="uri">https://arxiv.org/abs/2003.11539</a></p>
+<p>Han Xiao, Kashif Rasul, Roland Vollgraf (2017). <em>Fashion-MNIST: a Novel Image Dataset for Benchmarking Machine Learning Algorithms</em>. <a href="https://arxiv.org/abs/1708.07747" class="uri">https://arxiv.org/abs/1708.07747</a></p>
+</div>
+<div class="footnotes">
+<hr />
+<ol>
+<li id="fn1"><p>Though I cannot say that I’m familiar with the literature; so maybe these approaches are actually quite simple.<a href="#fnref1" class="footnote-back">↩</a></p></li>
+<li id="fn2"><p>We did not use the label information as in <a href="https://umap-learn.readthedocs.io/en/latest/supervised.html#training-with-labels-and-embedding-unlabelled-test-data-metric-learning-with-umap">metric learning</a> though this would be a nice additional step to explore.<a href="#fnref2" class="footnote-back">↩</a></p></li>
+<li id="fn3"><p>Here we ensure that exactly one of the five training samples has the same label as the test observation.<a href="#fnref3" class="footnote-back">↩</a></p></li>
+<li id="fn4"><p>Note that we sample the training examples from the test set: In theory, we might sometimes have the same observation in both the few shot examples and the observation to be classified. Given the sample sizes the chance is small, but nonetheless it might have given a slight positive bias.<a href="#fnref4" class="footnote-back">↩</a></p></li>
+</ol>
+</div>

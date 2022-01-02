@@ -1,0 +1,116 @@
+---
+title: Embedding Many Time Series via Recurrence Plots
+author: Tim Radtke
+date: '2020-06-14'
+slug: embedding-many-time-series-via-recurrence-plots
+categories:
+  - forecasting
+tags:
+  - time series
+  - umap
+  - hdbscan
+  - embedding
+  - machine learning
+---
+
+
+
+<p><em>We demonstrate how recurrence plots can be used to embed a large set of time series via UMAP and HDBSCAN to quickly identify groups of series with unique characteristics such as seasonality or outliers. The approach supports exploratory analysis of time series via visualization that scales poorly when combined with large sets of related time series. We show how it works using a Walmart dataset of sales and a Citi Bike dataset of bike rides.</em></p>
+<p>Traditional time series courses act as if we had plenty of time to take care of time series individually, one after another. In reality, though, we’re often faced with a large set of time series—too large to look at each time series yet alone to check them repeatedly. This conflicts with the value that comes from visualizing time series to understand how they might need to be modeled. Randomly picking time series from the larger set is one way to deal with this issue. But I’ve also come to appreciate the following combination of tricks to quickly become aware of broader patterns and issues in a given set of data.</p>
+<div id="recurrence-plots" class="section level2">
+<h2>Recurrence Plots</h2>
+<p>Recurrence plots are not a new idea but I only became aware of them through the recent paper by <a href="https://arxiv.org/abs/1904.08064">Lia et al. (2020)</a> who build on top of the original description by <a href="https://iopscience.iop.org/article/10.1209/0295-5075/4/9/004">Eckmann et al. (1987)</a>. Given a time series with observations <span class="math inline">\(y_1, ..., y_T\)</span>, the authors check for each combination of two observations <span class="math inline">\(i\)</span> and <span class="math inline">\(j\)</span> with <span class="math inline">\(i &lt; j\)</span> whether <span class="math inline">\(|y_j - y_i| &lt; \epsilon\)</span> with <span class="math inline">\(\epsilon &gt; 0\)</span>. If this holds, then the observation has <em>recurred</em>.</p>
+<p>Given that many important patterns in time series can be described by how similar two points in the time series are to each other, plotting this recurrence information can be helpful to spot said patterns.</p>
+<p>I suppose that the binary measure was used in 1987 as it was easier to print a graph in black-and-white rather than shades of color. Nowadays though, we can look at the continuous version of the (absolute) difference between two points. Using all combinations of <span class="math inline">\(i\)</span> and <span class="math inline">\(j\)</span>, we get following square recurrence plots:</p>
+<p><img src="/post/2020-06-14-embedding-many-time-series-via-recurrence-plots_files/figure-html/unnamed-chunk-2-1.png" width="672" /></p>
+<p>Real time series, of course, do not have patterns this clean. This makes it difficult to draw conclusions from these graphs when they resemble the one on the right rather than the two on the left. Lia et al. (2020) thus took to Convolutional Neural Networks to analyze a large set of time series via recurrence plots.</p>
+<p>Lia et al. (2020) had a specific task that needed solving. However, when it comes to exploration of the data set only, <a href="https://umap-learn.readthedocs.io/">UMAP</a> is a favorite of mine. Similarly to how <a href="https://minimizeregret.com/post/2020/04/26/are-you-sure-this-embedding-is-good-enough/">UMAP can embed the MNIST dataset</a>, we can run UMAP on recurrence plots of many time series to project each time series onto a two-dimensional space. In this representation, time series with similar recurrence plots should be clustered and spotting commonalities among them becomes easier.</p>
+</div>
+<div id="umap-on-recurrence-plots" class="section level2">
+<h2>UMAP on Recurrence Plots</h2>
+<p>To explore the usefulness of recurrence plots combined with UMAP, we consider two freely available data sets of many time series: 1) <a href="https://s3.amazonaws.com/tripdata/index.html">Daily number of rides starting from Citi Bike stations in New York</a>, and 2) <a href="https://www.kaggle.com/c/m5-forecasting-accuracy">daily sales of products at 10 different Walmart locations in the US</a>.</p>
+<p>Both datasets consist of daily observations. Here, however, we load them aggregated to monthly values (<code>date</code> is formatted as <code>YYYY-MM-01</code>). The reason for this is mostly that the recurrence plots create large datasets: What previously was a time series of <span class="math inline">\(N\)</span> observations turns into at least <span class="math inline">\(N^2/2\)</span> observations. This is a major drawback to consider—especially when going beyond a single series.</p>
+<pre class="r"><code>glimpse(citibike)</code></pre>
+<pre><code>## Observations: 46,170
+## Variables: 3
+## $ id    &lt;dbl&gt; 72, 72, 72, 72, 72, 72, 72, 72, 72, 72, 72, 72, 72, 72, 72…
+## $ date  &lt;date&gt; 2013-07-01, 2013-08-01, 2013-09-01, 2013-10-01, 2013-11-0…
+## $ value &lt;dbl&gt; 3575, 3675, 3153, 3325, 2122, 1213, 924, 676, 1433, 2380, …</code></pre>
+<pre class="r"><code>glimpse(walmart)</code></pre>
+<pre><code>## Observations: 320,000
+## Variables: 3
+## $ id    &lt;chr&gt; &quot;FOODS_1_012_CA_1_validation&quot;, &quot;FOODS_1_012_CA_1_validatio…
+## $ date  &lt;date&gt; 2011-01-01, 2011-02-01, 2011-03-01, 2011-04-01, 2011-05-0…
+## $ value &lt;dbl&gt; 0, 0, 0, 0, 0, 0, 4, 3, 0, 0, 0, 0, 0, 0, 0, 0, 15, 89, 13…</code></pre>
+<p>Note that for both datasets the observations are non-negative counts. This is what a randomly picked time series from the <code>citibike</code> dataset looks like:</p>
+<p><img src="/post/2020-06-14-embedding-many-time-series-via-recurrence-plots_files/figure-html/unnamed-chunk-5-1.png" width="672" /></p>
+<p>And this is what sales for a randomly picked product at Walmart look like:</p>
+<p><img src="/post/2020-06-14-embedding-many-time-series-via-recurrence-plots_files/figure-html/unnamed-chunk-6-1.png" width="672" /></p>
+<p>The latter time series of Walmart highlight another detail that needs to be considered when using recurrence plots the way I do: Since we want to feed every pixel of the recurrence plot as a feature to UMAP, we need the same number of pixels for each time series. To achieve this when new Citi Bike stations are added over time and products are launched or discontinued at Walmart, I pad each time series with zeros as needed. At least in the case of count time series the zero is a natural choice. However, we will see in the following that even in this case the padding does have a strong impact on the results.</p>
+<p>To run the analysis, we first need to compute the recurrence plots for each time series of the dataset. We start by analyzing the Walmart dataset.</p>
+<div id="umap-and-recurrence-plots-for-walmart-sales" class="section level3">
+<h3>UMAP and Recurrence Plots for Walmart Sales</h3>
+<p><em>In the following, I use a few convenience functions <a href="https://github.com/timradtke/recur">shared as tiny R package <code>recur</code> on Github</a>. They wrap in part functions from the <code>umap</code> and <code>hdbscan</code> package which do the actual work.</em></p>
+<p>We take the dataset and compute the recurrence plot for each product. The <a href="https://github.com/timradtke/recur/blob/master/R/measure.R"><code>recur::measure()</code></a> function does exactly this. Here, we return the recurrence pixels in a long table after having computed the full <span class="math inline">\(N \times N\)</span> matrix. Before computing the recurrence values, it min-max standardizes all values for each time series to values between 0 and 1.</p>
+<pre class="r"><code>walmart_recur &lt;- recur::measure(walmart, shape = &quot;long&quot;, size = &quot;square&quot;)</code></pre>
+<p>The recurrence plot of the product shown above looks as follows, with a large area reserved for the initial zero padding. The area with recurrence of points after the product started selling appears without obvious pattern and is limited to less than a quarter of the pixels.</p>
+<p><img src="/post/2020-06-14-embedding-many-time-series-via-recurrence-plots_files/figure-html/unnamed-chunk-8-1.png" width="672" /></p>
+<p>With the recurrence pixels for each time series in hand, we can pass them to UMAP to get a two-dimensional embedding of the time series. <a href="https://github.com/timradtke/recur/blob/master/R/embed.R"><code>recur::embed()</code></a> is a convenience function that first calls <code>recur::measure()</code> and then <code>umap::umap()</code> to do this.</p>
+<pre class="r"><code>walmart_embed &lt;- recur::embed(data = walmart)</code></pre>
+<p>Even before visualizing the embedding, we continue and cluster the products in the embedding space via HDBSCAN where the <a href="https://github.com/timradtke/recur/blob/master/R/cluster.R"><code>recur::cluster()</code></a> function calls <code>dbscan::hdbscan()</code> to do so.</p>
+<pre class="r"><code>walmart_cluster &lt;- recur::cluster(walmart_embed)</code></pre>
+<p><img src="/post/2020-06-14-embedding-many-time-series-via-recurrence-plots_files/figure-html/unnamed-chunk-11-1.png" width="672" /></p>
+<p>There appear to exist groups of time series that are <em>very</em> different from the rest. If we focus on the central, largest set of time series, we see that they are mostly densely clustered.</p>
+<p><img src="/post/2020-06-14-embedding-many-time-series-via-recurrence-plots_files/figure-html/unnamed-chunk-12-1.png" width="672" /></p>
+<p>Since this by itself might not be overly useful, we can instead look at the <span class="math inline">\(n\)</span> time series in cluster <span class="math inline">\(k\)</span> with the largest HDBSCAN cluster membership probability using the following function:</p>
+<pre class="r"><code>plot_top_n_from_cluster_k &lt;- function(clustered, data, n = 9, k = 1) {
+  filtered &lt;- clustered$embedding[clustered$embedding$cluster == k,]
+  ordered &lt;- filtered[order(filtered$membership_prob, decreasing = TRUE),]
+  n &lt;- min(nrow(ordered), n)
+  
+  
+  pp &lt;- data[data$id %in% ordered$id[1:n],] %&gt;%
+    ggplot(aes(x = date, y = value)) +
+    geom_line(color = &quot;grey&quot;) +
+    geom_point() +
+    facet_wrap(~id, scales = &quot;free&quot;) +
+    labs(x = &quot;Month&quot;, y = &quot;Sales&quot;, 
+         title = paste0(&quot;Top &quot;, n, &quot; Series in Cluster &quot;, k))
+  
+  return(pp)
+}</code></pre>
+<p><img src="/post/2020-06-14-embedding-many-time-series-via-recurrence-plots_files/figure-html/unnamed-chunk-14-1.png" width="672" /><img src="/post/2020-06-14-embedding-many-time-series-via-recurrence-plots_files/figure-html/unnamed-chunk-14-2.png" width="672" /><img src="/post/2020-06-14-embedding-many-time-series-via-recurrence-plots_files/figure-html/unnamed-chunk-14-3.png" width="672" /></p>
+<p>If you would reproduce this at home and check more of the clusters, you would notice that many of the clusters consist of a set of time series that starts <em>after</em> the earliest possible start date and thus has 0 sales for the first months. This can mean, of course, that a quarter or half or more of the values of the series are <em>exactly</em> equal to other series with the same start date, while at the same time the importance of the differences between the actual observations is lessened by the min-max scaling. One example of this is the following cluster.</p>
+<p><img src="/post/2020-06-14-embedding-many-time-series-via-recurrence-plots_files/figure-html/unnamed-chunk-15-1.png" width="672" /></p>
+<p>So the method is certainly not perfect. But this drawback can also help to check your assumptions on whether the data is clean or not. It can also identify groups of time series that need a different modeling approach than others.</p>
+</div>
+<div id="umap-and-recurrence-plots-for-citi-bike-rides" class="section level3">
+<h3>UMAP and Recurrence Plots for Citi Bike Rides</h3>
+<p>We can now apply the same methods to the Citi Bike data. An interesting differentiation to the Walmart data is that most time series here have a strong yearly seasonality. This, for example, is what the recurrence plot of Citi Bike station 360 looks like:</p>
+<p><img src="/post/2020-06-14-embedding-many-time-series-via-recurrence-plots_files/figure-html/unnamed-chunk-16-1.png" width="672" /></p>
+<p>Compared to the plot of the Walmart product above, this is much closer to the idealized sine curve recurrence pattern!</p>
+<p>To analyze the entire dataset, we take the monthly observations of Citi Bike rides, compute the recurrence plots and pass them to UMAP and HDBSCAN, just as before.</p>
+<pre class="r"><code>citibike_embed &lt;- recur::embed(data = citibike)
+citibike_cluster &lt;- recur::cluster(citibike_embed)</code></pre>
+<p>This time, the global dispersion in the UMAP embedding is not quite as extreme as for Walmart, and HDBSCAN is able to cluster the time series nicely.</p>
+<p><img src="/post/2020-06-14-embedding-many-time-series-via-recurrence-plots_files/figure-html/unnamed-chunk-18-1.png" width="672" /></p>
+<p>We peak into the clusters to reveal that yet again the clusters depend heavily on the dates at which the respective stations within the cluster were used for the first/last time, as this provides UMAP with the largest <em>global</em> variation.</p>
+<p><img src="/post/2020-06-14-embedding-many-time-series-via-recurrence-plots_files/figure-html/unnamed-chunk-20-1.png" width="672" /><img src="/post/2020-06-14-embedding-many-time-series-via-recurrence-plots_files/figure-html/unnamed-chunk-20-2.png" width="672" /><img src="/post/2020-06-14-embedding-many-time-series-via-recurrence-plots_files/figure-html/unnamed-chunk-20-3.png" width="672" /><img src="/post/2020-06-14-embedding-many-time-series-via-recurrence-plots_files/figure-html/unnamed-chunk-20-4.png" width="672" /></p>
+</div>
+</div>
+<div id="citi-bike-recurrence-plots-and-location-data" class="section level2">
+<h2>Citi Bike Recurrence Plots and Location Data</h2>
+<p>A unique feature of the Citi Bike data is that each time series corresponds to a location in New York since the rides are counted for each station at which a ride starts. The coordinates of Citi Bike stations are also available with the ride data which let’s us make use of this information.</p>
+<p>We can take the cluster information that we used in the plot of the embedding above and project the stations with the cluster information onto their respective coordinate. The resulting plot reveals that Citi Bike rolled out its stations by distinct areas in New York. The largest cluster (pink) corresponds to the stations available from the start, which are located in Manhattan south of Central Park, as well as the parts of Brooklyn that connect to Manhattan via the Williamsburg Bridge, Brooklyn Bridge and Manhattan Bridge.</p>
+<p><img src="/post/2020-06-14-embedding-many-time-series-via-recurrence-plots_files/figure-html/unnamed-chunk-21-1.png" width="672" /></p>
+</div>
+<div id="references" class="section level2">
+<h2>References</h2>
+<p>Citi Bike data available at <a href="https://s3.amazonaws.com/tripdata/index.html" class="uri">https://s3.amazonaws.com/tripdata/index.html</a>. See also <a href="https://www.citibikenyc.com/system-data" class="uri">https://www.citibikenyc.com/system-data</a>.</p>
+<p>The Walmart data set is part of the M5 competition hosted on Kaggle, see <a href="https://www.kaggle.com/c/m5-forecasting-accuracy" class="uri">https://www.kaggle.com/c/m5-forecasting-accuracy</a>.</p>
+<p>Xixi Lia, Yanfei Kanga, Feng Li (2020). <a href="https://arxiv.org/abs/1904.08064"><em>Forecasting with Time Series Imaging</em></a>, ArXiv e-prints 1802.03426.</p>
+<p>J.-P. Eckmann, S. Oliffson Kamphorst, D. Ruelle (1987). <a href="https://iopscience.iop.org/article/10.1209/0295-5075/4/9/004"><em>Recurrence Plots of Dynamical Systems</em></a>, EPL (Europhysics Letters), Vol. 4, 9.</p>
+<p>L. McInnes, J. Healy, J. Melville (2018). <a href="https://arxiv.org/abs/1802.03426"><em>UMAP: Uniform Manifold Approximation and Projection for Dimension Reduction</em></a>, ArXiv e-prints 1802.03426.</p>
+<p>L. McInnes, J. Healy, S. Astels. <em>The hdbscan Clustering Library</em>.</p>
+<p>R. J.G.B. Campello, D. Moulavi, J. Sander (2013). <em>Density-Based Clustering Based on Hierarchical Density Estimates</em>, PAKDD 2013, Part II, LNAI 7819, pp. 160-172.</p>
+</div>

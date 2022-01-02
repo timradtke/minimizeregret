@@ -1,0 +1,59 @@
+---
+title: Problem Representations and Model-Based Machine Learning
+author: Tim Radtke
+date: "2019-02-24"
+slug: problem-representations-and-model-based-machine-learning
+categories:
+  - Machine Learning
+tags:
+  - Feature Engineering
+  - Model-based machine learning
+  - Architecture Engineering
+---
+
+Back in 2003, Paul Graham, of Viaweb and Y Combinator fame, published an article entitled "[Better Bayesian Filtering](http://www.paulgraham.com/better.html)". I was scrolling chronologically through [his essays archive](http://www.paulgraham.com/articles.html) the other day when this article stuck out to me (well, the "Bayesian" keyword). After reading the first few paragraphs, I was a little disappointed to realize the topic was Naive Bayes rather than Bayesian methods. But it turned out to be a tale of implementing a machine learning solution for a real world application before anyone dared to mention AI in the same sentence.
+
+Graham explains how he achieved much better results in filtering spam mail than the academic results published previously at AAAI 1998.^[Pantel and Lin (1998). SpamCop. [*A Spam Classification & Organization Program*](http://www.patrickpantel.com/download/papers/1998/aaai98.pdf). Sahami, Dumais, Heckerman, and Horvitz (1998). [*A Bayesian Approach to Filtering Junk E-Mail*](https://www.aaai.org/Papers/Workshops/1998/WS-98-05/WS98-05-009.pdf).] Besides his access to more data, he attributes his results to how he prepared the data. He refrained from stemming words, using "mailing" and "mailed" instead of "mail". He preserves case when tokenizing the text, treats exclamation points as part of words ("FREE!") and keeps periods and commas between digits to get IP adresses and prices.
+
+> There is a lesson here for filter writers: don't ignore data. You'd think this lesson would be too obvious to mention, but I've had to learn it several times.
+
+What Graham believes to be the most significant difference, however, is that he included the information available in the [e-mails' message headers](https://en.wikipedia.org/wiki/Email#Message_header) (e.g., sender, recipient, date and subject line). E-mails are not just text, there is more structure to an e-mail than that. Structure that humans use to work more efficiently with the text, structure that we recognize as important when scrolling through our inbox and identifying the messages we do need to respond to. We shouldn't keep the machine from using this information.
+
+> I don't think it's a good idea to treat spam filtering as a straight text classification problem. You can use text classification techniques, but solutions can and should reflect the fact that the text is email, and spam in particular. Email is not just text; it has structure.
+
+I believe that there are many application specific cases in which simple solutions (such as Naive Bayes) can get you incredibly far if you can make the data accessible to the algorithm such that the algorithm can find the important bits that humans would pay attention to (if humans could browse through data quickly enough). I'm trying to think about this as more than just feature engineering. Architecture engineering belongs here just as much---there is a reason that convolutions work well in image classification. By using convolutions, we provide prior (human) information and structure to the machine^[Goodfellow, Bengio, Courville (2016). [Deep Learning](https://www.deeplearningbook.org/contents/convnets.html). Chapter 9, Convolutional Networks.] without which it would be even tougher to find reliable patterns. We don't need to rely on a [universal approximation theorem](https://en.wikipedia.org/wiki/Universal_approximation_theorem) and pray that we're able to search through an infinite function space if we can provide assumptions about the real world to our model (either through data preparation or architecture).
+
+Franc&#807;ois Chollet provides an example of feature engineering in his book "[Deep Learning with Python](https://www.manning.com/books/deep-learning-with-python)" that I think is an example of making a problem accessible to models by translating human structure into mathematical or machine structure. In his example, we're "trying to develop a model that can take as input an image of a clock and can output the time of day". Yes, you could (probably) use a CNN to solve this problem, but this would be wasteful of computational resources. Chollet continues:
+
+> But if you already understand the problem at a high level (you understand how humans read time on a clock face), then you can come up with much better input features for a machine-learning algorithm: for instance, it’s easy to write a short Python script to follow the black pixels of the clock hands and output the (x, y) coordinates of the tip of each hand. Then a simple machine-learning algorithm can learn to associate these coordinates with the appropriate time of day.
+
+While this is much better than using a CNN, the beauty of this example problem is that it does not require any machine learning whatsoever. Doing a coordinate change from (x, y) coordinates to polar coordinates, you get the angle of each clock hand. From here, "a simple rounding operation and dictionary lookup are enough to recover the approximate time of day."
+
+In a way, this is nothing else than using the perfect kernel in a support vector machine, or doing the representation learning for your neural network.^[Christopher Olah's article on [Neural Networks, Manifolds and Topology](http://colah.github.io/posts/2014-03-NN-Manifolds-Topology) makes it very clear what I mean by representation learning.] If you can represent your problem well, it will be much simpler to solve it.
+
+In a different chapter, Chollet discusses a 1-day ahead temperature forecasting problem. As a simple baseline method, he uses the current temperature to predict the temperature 24 hours from now, given that there is a strong daily seasonality in the data.^[That is, he uses a [seasonal random walk model](https://people.duke.edu/~rnau/411searw.htm).] He then applies a very simple feed-forward neural network which fails to achieve a better performance. Chollet argues:
+
+> This goes to show the merit of having this baseline in the first place: it turns out to be not easy to outperform. Your common sense contains a lot of valuable information that a machine-learning model doesn’t have access to.
+
+> You may wonder, if a simple, well-performing model exists to go from the data to the targets (the common-sense baseline), why doesn’t the model you’re training find it and improve on it? Because this simple solution isn’t what your training setup is looking for. The space of models in which you’re searching for a solution--that is, your hypothesis space--is the space of all possible two-layer networks with the configuration you defined. These networks are already fairly complicated. When you’re looking for a solution with a space of complicated models, the simple, well-performing baseline may be unlearnable, even if it’s technically part of the hypothesis space. That is a pretty significant limitation of machine learning in general: unless the learning algorithm is hardcoded to look for a specific kind of simple model, parameter learning can sometimes fail to find a simple solution to a simple problem.
+
+He then goes on and achieves a mean absolute error of 2.35°C with an LSTM architecture compared to 2.57°C of the seasonal random walk model.
+
+In a similar manner, [Gers, Eck and Schmidhuber (2003)](ftp://ftp.idsia.ch/pub/juergen/icann2001predict.pdf) note that MLPs can be advantageous over LSTM architectures when time series can be forecasted based on direct access to a few past observations (similarly to ARIMA models):
+
+> A time window based MLP outperformed the LSTM pure-AR approach on certain time series prediction benchmarks solvable by looking at a few recent inputs only. Thus LSTM's special strength, namely, to learn to remember single events for very long, unknown time periods, was not necessary here.
+
+I highlight this result as it implies that simpler solutions can suffice when the problem is represented well. Here, a forecast is possible at every time step based on a few lagged previous time steps. This representation can be difficult to find for potentially more powerful models, while constrained models may represent exactly this knowledge about the problem space.
+
+You need to find the right tool for your application. If you have knowledge about your problem, and you are able to put this knowledge into structure, then a model that can pick up this structure may be superior compared to the latest models from ICML, NeurIPS or ICLR.^[Add some additional metaphor containing screws and a hammer.]
+
+If we accept that there is structure in the real world that we would like to incorporate into our models before we let them adjust their predictions to those that are in agreement with the data we observe from the real world; then it is easy to recognize advantages of *[model-based machine learning](http://mbmlbook.com/Introduction.html)* as described by Winn and Bishop in their same-titled book:
+
+> [...] the model-based approach seeks to create a bespoke solution tailored to each new application. Instead of having to transform your problem to fit some standard algorithm, in model-based machine learning you design the algorithm precisely to fit your problem.
+
+> The core idea at the heart of model-based machine learning is that all the assumptions about the problem domain are made explicit in the form of a model. In fact, a model is just made up of this set of assumptions, expressed in a precise mathematical form.
+
+See also a [presentation in which Christopher Bishop introduces the concept of model-based machine learning](https://www.youtube.com/watch?v=8a7wBLg5Q8U).
+
+
+

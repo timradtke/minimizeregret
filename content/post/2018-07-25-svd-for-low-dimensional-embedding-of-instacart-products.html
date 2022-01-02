@@ -1,0 +1,706 @@
+---
+title: SVD for a Low-Dimensional Embedding of Instacart Products
+author: Tim Radtke
+date: '2018-07-25'
+slug: svd-instacart-product-embedding
+categories:
+  - Machine Learning
+tags:
+  - Instacart
+  - word2vec
+  - SVD
+  - PMI
+  - product recommendations
+  - embedding
+---
+
+
+
+<p><em>Building on the Instacart product recommendations based on Pointwise Mutual Information (PMI) in <a href="https://minimizeregret.com/post/2018/06/17/instacart-products-bought-together/">the previous article</a>, we use Singular Value Decomposition to factorize the PMI matrix into a matrix of lower dimension (“embedding”). This allows us to identify groups of related products easily.</em></p>
+<p>We finished <a href="https://minimizeregret.com/post/2018/06/17/instacart-products-bought-together/">the previous article</a> with a long table where every row measured how surprisingly often two products were bought together according to the <a href="https://www.instacart.com/datasets/grocery-shopping-2017">Instacart Online Grocery Shopping</a> dataset. The main point being that recommendations based on pointwise mutual information (PMI) are a strong first solution despite their simplicity. You can explore the results in <a href="https://timradtke.shinyapps.io/instacart/">a Shiny app</a>.</p>
+<p>While the previous result could be implemented entirely in SQL, we will move beyond what is feasible in SQL very soon.</p>
+<div id="goal-a-word2vec-style-representation-of-products" class="section level2">
+<h2>Goal: A word2vec-style Representation of Products</h2>
+<p>Using <a href="https://papers.nips.cc/paper/5021-distributed-representations-of-words-and-phrases-and-their-compositionality.pdf">word2vec</a> is all the rage to derive numeric vector representations of words in natural language processing. The result is be a <span class="math inline">\(N\times K\)</span> matrix of <span class="math inline">\(N\)</span> words represented by <span class="math inline">\(K\)</span> vectors. Since <span class="math inline">\(K \ll N\)</span>, such a low-dimensional representation is extremely useful as input for subsequent tasks such as classification, or to perform word2vec’s hallmark word vector operations such as <em>zuckerberg - facebook + microsoft ~ nadella</em>.</p>
+<p>In our case, we deal with <span class="math inline">\(N=8979\)</span> products, which is manageable. Still, by using a small <span class="math inline">\(K = 64\)</span> we are able to go from a <span class="math inline">\(N \times N\)</span> pointwise mutual information matrix to a small-ish set of vectors summarizing the information. And since we will be using <a href="https://jeremykun.com/2016/04/18/singular-value-decomposition-part-1-perspectives-on-linear-algebra/">singular value decomposition</a> to do so, (hopefully most) vectors will even highlight different groups of related products! That’s a nice side effect when trying to derive higher level abstractions and patterns in the purchase data—compared to individual product-to-product relations—and comparable to topics derived from topic models like <a href="http://www.jmlr.org/papers/volume3/blei03a/blei03a.pdf">Latent Dirichlet Allocation</a>.</p>
+<p>This blog post is inspired by Chris Moody’s <a href="https://multithreaded.stitchfix.com/blog/2017/10/18/stop-using-word2vec/">Stop Using word2vec</a> on StichFix’ MultiThreaded blog, in which Chris applied SVD in combination with PMI on the more typical NLP task of embedding words from the <a href="https://cloud.google.com/bigquery/public-data/hacker-news">Hacker News</a> corpus. In the following, we will see that one can use the exact same method to derive a representation of items sold on Instacart.</p>
+</div>
+<div id="from-pmi-matrix-to-svd" class="section level2">
+<h2>From PMI Matrix to SVD</h2>
+<p><a href="https://minimizeregret.com/post/2018/06/17/instacart-products-bought-together/">The previous blog post</a> introduced the Pointwise Mutual Information and how it can be applied to derive product recommendations for products that have been purchased in the same order. We finished with a long table called <code>pp_rec_smooth</code> in which every row represented an observed combination of two products that have been purchased together a couple of times, as well as their corresponding pointwise mutual information.</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">product_name.x</th>
+<th align="left">product_name.y</th>
+<th align="right">pmi</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Birthday Candles</td>
+<td align="left">Classic Lighters</td>
+<td align="right">2.69</td>
+</tr>
+<tr class="even">
+<td align="left">Birthday Candles</td>
+<td align="left">Super Moist Chocolate Fudge Cake Mix</td>
+<td align="right">2.63</td>
+</tr>
+<tr class="odd">
+<td align="left">Birthday Candles</td>
+<td align="left">Creamy Classic Vanilla Frosting</td>
+<td align="right">2.55</td>
+</tr>
+<tr class="even">
+<td align="left">Birthday Candles</td>
+<td align="left">Rich and Creamy Milk Chocolate Frosting</td>
+<td align="right">2.51</td>
+</tr>
+<tr class="odd">
+<td align="left">Birthday Candles</td>
+<td align="left">Funfetti Premium Cake Mix With Candy Bits</td>
+<td align="right">2.48</td>
+</tr>
+</tbody>
+</table>
+<p>Consequently, the table is quite long with 31708163 rows. This is still smaller than the <span class="math inline">\(8979\cdot 8979 = 80622441\)</span> row table for <em>all</em> combinations of products. The latter, however, is exactly what we need for the matrix factorization through singular value decomposition: A <span class="math inline">\(N \times N\)</span> item-by-item pointwise mutual information matrix. We create this matrix by widening the long table; it’s not beautiful, but it does the job.</p>
+<pre class="r"><code>pmi_matrix &lt;- pp_rec_smooth %&gt;%
+  select(product_id.x, product_id.y, pmi) %&gt;%
+  tidyr::spread(product_id.y, pmi)
+pmi_matrix_product_ids &lt;- pmi_matrix[,1]
+pmi_matrix &lt;- pmi_matrix[,-1]
+
+pmi_matrix[1:5,1:5]</code></pre>
+<pre><code>## # A tibble: 5 x 5
+##     `1`    `10`   `23`    `25`  `28`
+##   &lt;dbl&gt;   &lt;dbl&gt;  &lt;dbl&gt;   &lt;dbl&gt; &lt;dbl&gt;
+## 1  5.59  NA      NA     NA     NA   
+## 2 NA      5.29  - 1.71 - 0.548 NA   
+## 3 NA    - 1.51    5.89 - 1.36  NA   
+## 4 NA    - 0.498 - 1.51   5.44  NA   
+## 5 NA     NA      NA     NA      6.14</code></pre>
+<p>All <code>NA</code>s in this table represent product combinations that have not been observed in the data and for which we consequently do not have a PMI value.</p>
+<p>The problem with the <code>NA</code>s is that we cannot perform singular value decomposition on a matrix with missing entries. But assigning those entries any other value would give them meaning: A very negative value would convey a negative relationship, while setting all of them to zero implies no relationship. Neither is something we would like to simply assume in the following.</p>
+<p>A good alternative described in <a href="https://web.stanford.edu/~jurafsky/slp3/15.pdf">Jurafsky and Martin</a> is to set not only the <code>NA</code>s to zero, but also the negative PMI values. This can furthermore be justified by the observation that it is generally more difficult to observe a negative relationship using PMI—as described in the previous blog post and by Jurafsky and Martin. Thus we proceed by replacing both <code>NA</code>s and negative values by zero.</p>
+<pre class="r"><code>pmi_matrix[is.na(pmi_matrix)] &lt;- 0
+pmi_matrix[pmi_matrix &lt; 0] &lt;- 0
+pmi_matrix[1:5,1:5]</code></pre>
+<pre><code>## # A tibble: 5 x 5
+##     `1`  `10`  `23`  `25`  `28`
+##   &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt;
+## 1  5.59  0     0     0     0   
+## 2  0     5.29  0     0     0   
+## 3  0     0     5.89  0     0   
+## 4  0     0     0     5.44  0   
+## 5  0     0     0     0     6.14</code></pre>
+<pre class="r"><code>colSums(pmi_matrix)[1:5] # not only the diagonal is positive</code></pre>
+<pre><code>##        1       10       23       25       28 
+## 281.6510 126.0473 162.0798 265.7752 323.0297</code></pre>
+<p>The <span class="math inline">\(N \times N\)</span> matrix is now prepared for singular value decomposition. Though, it’s not actually a matrix yet. So let’s change that, and let’s use the fact that the matrix has become really sparse by converting the object into a sparse matrix.</p>
+<pre class="r"><code>pmi_matrix &lt;- as.matrix(pmi_matrix)
+row.names(pmi_matrix) &lt;- pmi_matrix_product_ids$product_id.x
+colnames(pmi_matrix) &lt;- pmi_matrix_product_ids$product_id.x
+
+library(Matrix)
+pmi_sparse_matrix &lt;- Matrix(pmi_matrix, sparse = TRUE)
+pmi_sparse_matrix[1:5,1:5]</code></pre>
+<pre><code>## 5 x 5 sparse Matrix of class &quot;dgCMatrix&quot;
+##           1       10       23       25       28
+## 1  5.587646 .        .        .        .       
+## 10 .        5.291013 .        .        .       
+## 23 .        .        5.891188 .        .       
+## 25 .        .        .        5.442685 .       
+## 28 .        .        .        .        6.135897</code></pre>
+<p>To make use of the sparsity when performing singular value decomposition, we can for example use the <code>sparsesvd</code> package. Here, we choose to find a representation of rank 64. This means in particular that we will have 64 vectors representing what was previously represented by 8979 vectors. Using the singular value decomposition, we arrange the available information in a more compact way; we lose some information, but hopefully retain most of it. Feel free to experiment with different values for the rank <span class="math inline">\(K\)</span>. Problematic is that there is no good quantitative way of finding a good <span class="math inline">\(K\)</span>. One could examine the eigenvalues, or check whether the vectors corresponding to the smallest eigenvalue for a given value of <span class="math inline">\(K\)</span> make some sense, and, if not, choose a smaller <span class="math inline">\(K\)</span> instead.</p>
+<pre class="r"><code>library(sparsesvd)
+set.seed(80495)
+pmi_svd &lt;- sparsesvd(pmi_sparse_matrix, 
+                     rank = 64)</code></pre>
+<p>The result looks as follows. We have the <span class="math inline">\(N \times K\)</span> matrix, <code>pmi_svd$u</code>, as well as the corresponding <span class="math inline">\(K\)</span> singular values. If we plot them, we can see how much information is contained in just the first couple of dimensions.</p>
+<pre class="r"><code>dim(pmi_svd$u)</code></pre>
+<pre><code>## [1] 8979   64</code></pre>
+<p><img src="/post/2018-07-25-svd-for-low-dimensional-embedding-of-instacart-products_files/figure-html/unnamed-chunk-7-1.png" width="672" /></p>
+</div>
+<div id="working-with-the-svd" class="section level2">
+<h2>Working with the SVD</h2>
+<p>Before we start using the result of the singular value decomposition, we add the product names to the rows of the left-singular vectors.</p>
+<pre class="r"><code>products &lt;- readr::read_csv(&quot;products.csv&quot;)
+departments &lt;- readr::read_csv(&quot;departments.csv&quot;)
+
+id_name_dict &lt;- data.frame(product_id = as.numeric(row.names(pmi_sparse_matrix))) %&gt;%
+  inner_join(select(products, product_id, 
+                    product_name, aisle_id, department_id)) %&gt;%
+  left_join(departments)
+
+product_vectors &lt;- pmi_svd$u
+row.names(product_vectors) &lt;- id_name_dict$product_name</code></pre>
+<p>With the row names added, we can easily search for specific products as well as the products that are closest in the <span class="math inline">\(K\)</span>-dimensional space as measured by a measure as simple as the dot product. That is, we’re starting to apply the typical techniques from word embeddings on our product matrix!</p>
+<pre class="r"><code># first a function to find the actual product names
+search_product &lt;- function(products, name) {
+  products[grepl(name, products, fixed = TRUE)]
+}
+
+# then the function that finds similar products by dot product
+search_synonyms &lt;- function(word_vectors, selected_vector) {
+  # https://juliasilge.com/blog/tidy-word-vectors/
+  require(broom)
+  
+  similarities &lt;- word_vectors %*% selected_vector %&gt;%
+    tidy() %&gt;%
+    as_tibble() %&gt;%
+    rename(product = .rownames,
+           similarity = unrowname.x.)
+  
+  similarities %&gt;%
+    arrange(-similarity)    
+}</code></pre>
+<p>We search for products containing the word <em>Ketchup</em> and then look for similar products, where the similarity is based on the dot product on a singular value decomposition of commonly bought together items.</p>
+<pre class="r"><code>search_product(row.names(product_vectors), &quot;Ketchup&quot;)</code></pre>
+<pre><code>##  [1] &quot;Reduced Sugar Tomato Ketchup&quot; &quot;Tomato Ketchup&quot;              
+##  [3] &quot;Organic Ketchup Gluten Free&quot;  &quot;Organic Ketchup&quot;             
+##  [5] &quot;Simply Heinz Tomato Ketchup&quot;  &quot;Organic Unsweetened Ketchup&quot; 
+##  [7] &quot;Classic Ketchup&quot;              &quot;Squeeze Tomato Ketchup&quot;      
+##  [9] &quot;Ketchup&quot;                      &quot;Organic Tomato Ketchup&quot;</code></pre>
+<pre class="r"><code>search_synonyms(product_vectors, 
+                product_vectors[&quot;Tomato Ketchup&quot;,]) %&gt;% 
+  head(10) %&gt;%
+  knitr::kable(digits = 4)</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">product</th>
+<th align="right">similarity</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Classic Hamburger Buns</td>
+<td align="right">0.0025</td>
+</tr>
+<tr class="even">
+<td align="left">Dill Relish</td>
+<td align="right">0.0025</td>
+</tr>
+<tr class="odd">
+<td align="left">Bun Length Skinless Beef Franks</td>
+<td align="right">0.0022</td>
+</tr>
+<tr class="even">
+<td align="left">Sweet Relish</td>
+<td align="right">0.0021</td>
+</tr>
+<tr class="odd">
+<td align="left">Celery Salt</td>
+<td align="right">0.0019</td>
+</tr>
+<tr class="even">
+<td align="left">Jumbo Beef Franks</td>
+<td align="right">0.0018</td>
+</tr>
+<tr class="odd">
+<td align="left">Hot Dog Buns</td>
+<td align="right">0.0017</td>
+</tr>
+<tr class="even">
+<td align="left">Classic Yellow Mustard</td>
+<td align="right">0.0017</td>
+</tr>
+<tr class="odd">
+<td align="left">Thousand Island Dressing</td>
+<td align="right">0.0016</td>
+</tr>
+<tr class="even">
+<td align="left">Golden Crinkles French Fried Potatoes</td>
+<td align="right">0.0016</td>
+</tr>
+</tbody>
+</table>
+<pre class="r"><code>search_product(row.names(product_vectors), &quot;Smoothie&quot;) %&gt;% tail()</code></pre>
+<pre><code>## [1] &quot;Blueberry B Fruit Smoothie&quot;                              
+## [2] &quot;Organic Original Acai Berry + Guarana Smoothie Packs&quot;    
+## [3] &quot;Protein Smoothie Choc-a-lot Flavor&quot;                      
+## [4] &quot;Power C Machine All Natural Fruit + Boost Juice Smoothie&quot;
+## [5] &quot;Danimals Strawberry Explosion Flavored Smoothie&quot;         
+## [6] &quot;Green Machine Juice Smoothie&quot;</code></pre>
+<pre class="r"><code>search_synonyms(product_vectors, 
+                product_vectors[&quot;Green Machine Juice Smoothie&quot;,]) %&gt;%
+  head(10) %&gt;%
+  knitr::kable(digits = 4)</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">product</th>
+<th align="right">similarity</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Berry Veggie Juice Smoothie</td>
+<td align="right">0.0289</td>
+</tr>
+<tr class="even">
+<td align="left">Power C Machine All Natural Fruit + Boost Juice Smoothie</td>
+<td align="right">0.0271</td>
+</tr>
+<tr class="odd">
+<td align="left">All Natural Berry Blast 100% Juice Smoothie</td>
+<td align="right">0.0266</td>
+</tr>
+<tr class="even">
+<td align="left">Red Machine Juice Smoothie</td>
+<td align="right">0.0263</td>
+</tr>
+<tr class="odd">
+<td align="left">Blue Machine 100% Juice Smoothie</td>
+<td align="right">0.0263</td>
+</tr>
+<tr class="even">
+<td align="left">Orange Mango Juice</td>
+<td align="right">0.0260</td>
+</tr>
+<tr class="odd">
+<td align="left">Protein Zone Protein Juice Smoothie</td>
+<td align="right">0.0259</td>
+</tr>
+<tr class="even">
+<td align="left">Protein Zone Double Berry Juice Smoothie</td>
+<td align="right">0.0258</td>
+</tr>
+<tr class="odd">
+<td align="left">Strawberry Banana Juice</td>
+<td align="right">0.0235</td>
+</tr>
+<tr class="even">
+<td align="left">Kale Blazer Juice</td>
+<td align="right">0.0228</td>
+</tr>
+</tbody>
+</table>
+<p>These results look quite good! But also similar to what we have been able to do based on the PMI alone.</p>
+</div>
+<div id="exploring-groups-of-products-via-dimensions" class="section level2">
+<h2>Exploring Groups of Products via Dimensions</h2>
+<p>Something that the PMI values did not provide us with were <strong>groups of similar/frequently purchased together products</strong>. Similarly to how we would derive topics when applying Latent Dirichlet Allocation on news articles, it would be super nice to build entire groups of bought-together products. In the case of Instacart, we might even deduct entire recipes. While no one gave singular value decomposition a metaphor as good as the topic model one, the individual singular vectors still allow us to find groups of related products. This is the case because related products should have similar values in certain dimensions. In the extreme, SVD compresses the information about a group of related products onto a single dimension in which these products have particularly high values.</p>
+<p>Thus we can find “important” groups of products by exploring for a given vector the products with the largest loading on that vector.</p>
+<p>The graph below contrasts singular vectors 7 and 8 from the <code>product_vectors</code> matrix. We see that most observations are very close to 0 on both vectors, while comparatively few products are loaded in absolute terms on just one of the two vectors. This already indicates how the vectors split the work of representing the information that was previously spread across all 8979 vectors: By focusing on a few products per vector, we can more easily store the overall patterns in the data. If a single vector can contain information on about 140 products, then <span class="math inline">\(64 \cdot 140 = 8979\)</span> products can be represented in 64 dimensions.</p>
+<p><img src="/post/2018-07-25-svd-for-low-dimensional-embedding-of-instacart-products_files/figure-html/unnamed-chunk-12-1.png" width="672" /></p>
+<p>If the model works well, related products will load similarly on a given vector. Let’s check for example what kind of information vector 8 stores about products. To get an idea, let’s just look at the 20 most negatively loaded products on vector 8. You see the list of the products below. Given the many “vegan”, “beefless”, “dairy free”, “fishless” mentions in product names, it should be safe to say that vegan products tend to load negatively on vector 8. To hype it up a notch: <strong>Our model has learned the concept of a vegan lifestyle from products that were bought together!</strong></p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">product_name</th>
+<th align="left">department</th>
+<th align="right">X8</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Home Style Beefless Tips</td>
+<td align="left">frozen</td>
+<td align="right">-0.0939</td>
+</tr>
+<tr class="even">
+<td align="left">Golden Fishless Filet</td>
+<td align="left">frozen</td>
+<td align="right">-0.0893</td>
+</tr>
+<tr class="odd">
+<td align="left">Mini Crispy Crabless Cakes</td>
+<td align="left">frozen</td>
+<td align="right">-0.0892</td>
+</tr>
+<tr class="even">
+<td align="left">Vegan Egg</td>
+<td align="left">dairy eggs</td>
+<td align="right">-0.0876</td>
+</tr>
+<tr class="odd">
+<td align="left">Alfredo Cheezy Mac</td>
+<td align="left">frozen</td>
+<td align="right">-0.0854</td>
+</tr>
+<tr class="even">
+<td align="left">Vegan White Cheddar Mac &amp; Cheese</td>
+<td align="left">dry goods pasta</td>
+<td align="right">-0.0847</td>
+</tr>
+<tr class="odd">
+<td align="left">Chao, Vegan, Tomato Cayenne, Slices</td>
+<td align="left">dairy eggs</td>
+<td align="right">-0.0833</td>
+</tr>
+<tr class="even">
+<td align="left">Vegan Cheddar Mac &amp; Cheese</td>
+<td align="left">dry goods pasta</td>
+<td align="right">-0.0824</td>
+</tr>
+<tr class="odd">
+<td align="left">Lightly Seasoned Chick’n Scallopini</td>
+<td align="left">frozen</td>
+<td align="right">-0.0817</td>
+</tr>
+<tr class="even">
+<td align="left">Dairy Free New York Style Cheezecake</td>
+<td align="left">frozen</td>
+<td align="right">-0.0806</td>
+</tr>
+<tr class="odd">
+<td align="left">Vegan Cheddar Flavor Squares</td>
+<td align="left">snacks</td>
+<td align="right">-0.0802</td>
+</tr>
+<tr class="even">
+<td align="left">Vegan Chao Creamy Original Cheese Slices</td>
+<td align="left">dairy eggs</td>
+<td align="right">-0.0791</td>
+</tr>
+<tr class="odd">
+<td align="left">Veggie Loaf Mashed Potatoes and Vegetables</td>
+<td align="left">frozen</td>
+<td align="right">-0.0791</td>
+</tr>
+<tr class="even">
+<td align="left">Vegan Hickory &amp; Sage Benevolent Bacon</td>
+<td align="left">deli</td>
+<td align="right">-0.0784</td>
+</tr>
+<tr class="odd">
+<td align="left">Cheese Alternative, American Style, Slices</td>
+<td align="left">dairy eggs</td>
+<td align="right">-0.0782</td>
+</tr>
+<tr class="even">
+<td align="left">Milk Free Better Than Sour Cream</td>
+<td align="left">dairy eggs</td>
+<td align="right">-0.0770</td>
+</tr>
+<tr class="odd">
+<td align="left">The Ultimate Beefless Burger</td>
+<td align="left">frozen</td>
+<td align="right">-0.0764</td>
+</tr>
+<tr class="even">
+<td align="left">Vegan Shells &amp; Creamy Sauce Mac &amp; Cheese Macaroni &amp; Cheese Organic</td>
+<td align="left">dry goods pasta</td>
+<td align="right">-0.0763</td>
+</tr>
+<tr class="odd">
+<td align="left">Dairy Free Grated Parmesan Style Topping</td>
+<td align="left">dairy eggs</td>
+<td align="right">-0.0762</td>
+</tr>
+<tr class="even">
+<td align="left">Vegan Margherita Pizza With Daiya Cheeze</td>
+<td align="left">frozen</td>
+<td align="right">-0.0759</td>
+</tr>
+</tbody>
+</table>
+<p>We can also look at the other end of vector 8, by considering products that loaded positively. Here we find a selection of snacks. But not just any snacks; we have <strong>a selection of high protein snacks ranging from nut bars to turkey jerkey</strong>.</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">product_name</th>
+<th align="left">department</th>
+<th align="right">X8</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Organic Almond Butter With Carob Macrobar</td>
+<td align="left">snacks</td>
+<td align="right">0.0294</td>
+</tr>
+<tr class="even">
+<td align="left">Blueberry Pecan Plus Fiber Fruit &amp; Nut Bar</td>
+<td align="left">snacks</td>
+<td align="right">0.0299</td>
+</tr>
+<tr class="odd">
+<td align="left">Macrobar Prolonged Powder Banana + Almond Butter</td>
+<td align="left">snacks</td>
+<td align="right">0.0303</td>
+</tr>
+<tr class="even">
+<td align="left">Potato Chips Sea Salt &amp; Vinegar</td>
+<td align="left">snacks</td>
+<td align="right">0.0304</td>
+</tr>
+<tr class="odd">
+<td align="left">Cranberry Almond Plus Fruit &amp; Nut Bars</td>
+<td align="left">snacks</td>
+<td align="right">0.0306</td>
+</tr>
+<tr class="even">
+<td align="left">Fruit &amp; Nut Bar Blueberry Vanilla &amp; Cashew</td>
+<td align="left">snacks</td>
+<td align="right">0.0310</td>
+</tr>
+<tr class="odd">
+<td align="left">Lightly Salted Chips</td>
+<td align="left">snacks</td>
+<td align="right">0.0318</td>
+</tr>
+<tr class="even">
+<td align="left">Original Turkey Jerky</td>
+<td align="left">snacks</td>
+<td align="right">0.0319</td>
+</tr>
+<tr class="odd">
+<td align="left">Organic Coriander Seeds</td>
+<td align="left">pantry</td>
+<td align="right">0.0320</td>
+</tr>
+<tr class="even">
+<td align="left">Dark Chocolate Cinnamon Pecan Bar</td>
+<td align="left">snacks</td>
+<td align="right">0.0321</td>
+</tr>
+<tr class="odd">
+<td align="left">Sweet Rejuvenation Cashew Butter Macrobar</td>
+<td align="left">snacks</td>
+<td align="right">0.0333</td>
+</tr>
+<tr class="even">
+<td align="left">Green Dragon with Passion Fruit Tea</td>
+<td align="left">beverages</td>
+<td align="right">0.0335</td>
+</tr>
+<tr class="odd">
+<td align="left">Healthy Grains Granola Bar, Vanilla Blueberry</td>
+<td align="left">snacks</td>
+<td align="right">0.0338</td>
+</tr>
+<tr class="even">
+<td align="left">Apple Cinnamon &amp; Pecan Fruit &amp; Nut Bar</td>
+<td align="left">snacks</td>
+<td align="right">0.0345</td>
+</tr>
+<tr class="odd">
+<td align="left">Organic Ground Cloves</td>
+<td align="left">pantry</td>
+<td align="right">0.0359</td>
+</tr>
+<tr class="even">
+<td align="left">Dark Chocolate Chili Almond Nuts &amp; Spices</td>
+<td align="left">snacks</td>
+<td align="right">0.0360</td>
+</tr>
+<tr class="odd">
+<td align="left">Turkey Bar, Almond + Cranberry</td>
+<td align="left">snacks</td>
+<td align="right">0.0363</td>
+</tr>
+<tr class="even">
+<td align="left">Teriyaki Turkey Jerky</td>
+<td align="left">snacks</td>
+<td align="right">0.0379</td>
+</tr>
+<tr class="odd">
+<td align="left">Almond Walnut Macadamia Plus Bar</td>
+<td align="left">snacks</td>
+<td align="right">0.0381</td>
+</tr>
+<tr class="even">
+<td align="left">Fruit &amp; Nut Delight Bar</td>
+<td align="left">snacks</td>
+<td align="right">0.0391</td>
+</tr>
+</tbody>
+</table>
+<div id="parallel-coordinates-plot" class="section level3">
+<h3>Parallel Coordinates Plot</h3>
+<p><img src="/post/2018-07-25-svd-for-low-dimensional-embedding-of-instacart-products_files/figure-html/unnamed-chunk-16-1.png" width="672" /></p>
+<p>To take the previous plot to the next level—or rather to the next dimension—one can try to display several dimensions in a parallel coordinates plot like the one below. This plot is not ideal on a number of dimensions; it’s obviously prone to overplotting. And not being interactive, it’s difficult to find out whether there are items that load on two neighboring dimensions.</p>
+<p>But by adding a color for every department, one gets a sense of the fact that some dimensions load only on products from one or very few departments (e.g., dimensions 2, 3, or 6), while other dimensions (e.g., 7) bring together products from several departments. In the case of dimensions 2 and 3, we even have the lucky case that the same products load on neighboring dimensions. This should generally not happen too often, since it implies that similar information is stored twice. It does happen when the products in question carry a lot of information about the dataset, i.e., explain a lot of the variance. In this case, it creates a very explicit delineation of one category from all others: the <em>babies</em> department.</p>
+<p><img src="/post/2018-07-25-svd-for-low-dimensional-embedding-of-instacart-products_files/figure-html/unnamed-chunk-17-1.png" width="672" /></p>
+<pre class="r"><code># show some of the products in the baby cluster
+set.seed(5463)
+product_vectors[,c(2,3)] %&gt;%
+  tidy() %&gt;%
+  bind_cols(id_name_dict) %&gt;%
+  filter(X1 &gt; 0.05, X2 &gt; 0.03) %&gt;%
+  select(product_name, department, X1, X2) %&gt;%
+  rename(X3 = X2, X2 = X1) %&gt;%
+  sample_n(5) %&gt;%
+  knitr::kable(digits = 2)</code></pre>
+<table>
+<thead>
+<tr class="header">
+<th align="left">product_name</th>
+<th align="left">department</th>
+<th align="right">X2</th>
+<th align="right">X3</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Apple and Carrot Stage 2 Baby Food</td>
+<td align="left">babies</td>
+<td align="right">0.06</td>
+<td align="right">0.04</td>
+</tr>
+<tr class="even">
+<td align="left">Berry &amp; Barley Organic Baby Food</td>
+<td align="left">babies</td>
+<td align="right">0.07</td>
+<td align="right">0.05</td>
+</tr>
+<tr class="odd">
+<td align="left">Baby Food Pouch - Butternut Squash, Carrot &amp; Chickpea</td>
+<td align="left">babies</td>
+<td align="right">0.06</td>
+<td align="right">0.04</td>
+</tr>
+<tr class="even">
+<td align="left">Squash &amp; Sweet Peas Stage 2</td>
+<td align="left">babies</td>
+<td align="right">0.09</td>
+<td align="right">0.06</td>
+</tr>
+<tr class="odd">
+<td align="left">Stage 2 Spinach, Apple &amp; Kale</td>
+<td align="left">babies</td>
+<td align="right">0.08</td>
+<td align="right">0.05</td>
+</tr>
+</tbody>
+</table>
+<p>While this effect is particularly drastic for the baby food, it is also observable in later dimensions for different product groups. For example, we could consider dimensions 13 and 14. They are not able to separate products quite as clearly, but some clusters are still visible. The products indicated in blue, for example, are a cluster of <em>frozen</em> and foremost Indian meals. The orange cluster, on the other hand, groups different items used for baking. Note how the rug lines of dimension 13 show that this dimension alone is not able to separate blue from orange observations. It takes the second dimension to successfully perform a separation.</p>
+<p><img src="/post/2018-07-25-svd-for-low-dimensional-embedding-of-instacart-products_files/figure-html/unnamed-chunk-19-1.png" width="672" /></p>
+<p>Frozen meals, Indian dishes for the most part:</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">product_name</th>
+<th align="left">department</th>
+<th align="right">X13</th>
+<th align="right">X14</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Harvest Casserole Bowls</td>
+<td align="left">frozen</td>
+<td align="right">-0.07</td>
+<td align="right">0.06</td>
+</tr>
+<tr class="even">
+<td align="left">Roasted Vegetable Tamale</td>
+<td align="left">frozen</td>
+<td align="right">-0.07</td>
+<td align="right">0.06</td>
+</tr>
+<tr class="odd">
+<td align="left">Gluten Free &amp; Dairy Free Thai Red Curry With Organic Jasmin Rice &amp; Vegetables</td>
+<td align="left">frozen</td>
+<td align="right">-0.07</td>
+<td align="right">0.06</td>
+</tr>
+<tr class="even">
+<td align="left">Indian Vegetable Korma Entrée</td>
+<td align="left">frozen</td>
+<td align="right">-0.07</td>
+<td align="right">0.06</td>
+</tr>
+<tr class="odd">
+<td align="left">Light &amp; Lean Sweet &amp; Sour Asian Noodle Pasta</td>
+<td align="left">frozen</td>
+<td align="right">-0.07</td>
+<td align="right">0.06</td>
+</tr>
+<tr class="even">
+<td align="left">Light and Lean Meatless Swedish Meatballs With Broccoli And Pasta</td>
+<td align="left">frozen</td>
+<td align="right">-0.07</td>
+<td align="right">0.06</td>
+</tr>
+<tr class="odd">
+<td align="left">Thai Green Curry</td>
+<td align="left">frozen</td>
+<td align="right">-0.07</td>
+<td align="right">0.06</td>
+</tr>
+<tr class="even">
+<td align="left">Indian Mattar Tofu</td>
+<td align="left">frozen</td>
+<td align="right">-0.07</td>
+<td align="right">0.06</td>
+</tr>
+<tr class="odd">
+<td align="left">Teriyaki Meal Bowls</td>
+<td align="left">frozen</td>
+<td align="right">-0.07</td>
+<td align="right">0.06</td>
+</tr>
+<tr class="even">
+<td align="left">Black Bean Tamale Verde</td>
+<td align="left">frozen</td>
+<td align="right">-0.07</td>
+<td align="right">0.06</td>
+</tr>
+</tbody>
+</table>
+<p>Advanced baking ingredients:</p>
+<table>
+<thead>
+<tr class="header">
+<th align="left">product_name</th>
+<th align="left">department</th>
+<th align="right">X13</th>
+<th align="right">X14</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">Angel Flake Sweetened Coconut</td>
+<td align="left">pantry</td>
+<td align="right">-0.06</td>
+<td align="right">0.01</td>
+</tr>
+<tr class="even">
+<td align="left">Nestle Toll House Premier White Chocolate Morsels</td>
+<td align="left">pantry</td>
+<td align="right">-0.07</td>
+<td align="right">0.02</td>
+</tr>
+<tr class="odd">
+<td align="left">Pure Granulated Sugar</td>
+<td align="left">pantry</td>
+<td align="right">-0.06</td>
+<td align="right">-0.01</td>
+</tr>
+<tr class="even">
+<td align="left">Light Corn Syrup with Real Vanilla</td>
+<td align="left">pantry</td>
+<td align="right">-0.08</td>
+<td align="right">0.03</td>
+</tr>
+<tr class="odd">
+<td align="left">Powdered Confectioners Sugar</td>
+<td align="left">pantry</td>
+<td align="right">-0.08</td>
+<td align="right">0.01</td>
+</tr>
+</tbody>
+</table>
+<p>Since this post would become even longer if I walked you through every interesting dimension, <a href="https://timradtke.shinyapps.io/instacart_svd_app/">I instead put the results in a small Shiny app</a>. You can use it to explore more customer behavior patterns that this simple model was able to learn. For example, find a dimension for all-things burrito, as well as dairy free yogurts and milk in dimension 42.</p>
+</div>
+</div>
+<div id="closing-thoughts" class="section level2">
+<h2>Closing Thoughts</h2>
+<p>In this post we have derived a low dimensional representation of products sold through Instacart. Even though a singular value decomposition is a simple model, the derived vector representation seems useful upon inspection. In this post, we have focused our attention on exploring the resulting vectors and showing how they compress and represent information about certain groups of products that are purchased together by customers.</p>
+<p>We have seen that the singular vectors can be interpreted similarly to LDA’s topics given that a given group of products loads on a one or a few vectors. What is still to be explored in future blog posts is the ability to perform vector operations, i.e., operations such as <em>Hamburger Buns - Beef + Wiener ~ Hot Dog Buns</em>. We have quickly shown how one can similar products to a given product through the dot product, but we have not used the cosine similarity yet. A future blog post will use the two dimensional graphs above to show how the dot product and cosine similarity can be used to explore the space of products.</p>
+<p>Until then, check out the product dimensions <a href="https://timradtke.shinyapps.io/instacart_svd_app/">in the Shiny app</a> to find more than just the group of vegan products.</p>
+</div>
+<div id="references" class="section level2">
+<h2>References</h2>
+<p>The Instacart Online Grocery Shopping Dataset 2017. Accessed from <a href="https://www.instacart.com/datasets/grocery-shopping-2017" class="uri">https://www.instacart.com/datasets/grocery-shopping-2017</a> on May 2, 2018.</p>
+<p>Chris Moody. <a href="https://multithreaded.stitchfix.com/blog/2017/10/18/stop-using-word2vec/">Stop Using word2vec</a>. Blog post on Stitchfix’ MultiThreaded blog, October 18, 2017.</p>
+<p>Julia Silge. <a href="https://juliasilge.com/blog/tidy-word-vectors/">Word Vectors with Tidy Data Principles</a>. Blog post, October 30, 2017.</p>
+<p>Daniel Jurafsky and James H. Martin. <a href="https://web.stanford.edu/~jurafsky/slp3/15.pdf">Vector Semantics</a>. Book chapter in <em><a href="https://web.stanford.edu/~jurafsky/slp3/">Speech and Language Processing</a></em>. Draft of August 7, 2017.</p>
+<p>Omer Levy and Yoav Goldberg. <a href="https://papers.nips.cc/paper/5477-neural-word-embedding-as-implicit-matrix-factorization">Neural Word Embedding as Implicit Matrix Factorization</a>. In <em>Advances in Neural Information Processing Systems 27</em> (NIPS 2014).</p>
+<p>Omer Levy, Yoav Goldberg and Ido Dagan. <a href="http://www.aclweb.org/anthology/Q15-1016">Improving Distributional Similarity with Lessons Learned from Word Embeddings</a>. <em>Transactions of the Association for Computational Linguistics</em>, vol. 3, pp. 211–225, 2015.</p>
+<p>Tomas Mikolov, Ilya Sutskever, Kai Chen, Greg Corrado and Jeffrey Dean. <a href="https://arxiv.org/abs/1310.4546">Distributed Representations of Words and Phrases and their Compositionality</a>.</p>
+</div>
