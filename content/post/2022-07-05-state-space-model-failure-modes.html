@@ -1,0 +1,248 @@
+---
+title: Failure Modes of State Space Models
+author: Tim Radtke
+date: '2022-07-05'
+slug: state-space-model-intricacies
+categories: []
+tags: []
+---
+
+
+
+<p>State space models are great, but they will fail in predictable ways.</p>
+<p>Well, claiming that they “fail” is a bit unfair. They actually behave <em>exactly</em> as they should given the input data. But if the input data fails to adhere to the Normal assumption or lacks stationarity, then this will affect the prediction derived from the state space models in perhaps unexpected yet deterministic ways.</p>
+<p>This article ensures that none of us is surprised by these “failure modes”.</p>
+<div id="the-model" class="section level2">
+<h2>The Model</h2>
+<p>To keep it instructive and because the analysis extends to the other standard model families of Innovation State Space Models (as in <code>forecast::ets()</code>, for example) and Structural Time Series Models / Multiple Sources of Error State Space Models (as in <code>bsts::bsts()</code>, for example), let’s consider the univariate local level model.</p>
+<p>Written as Structural Model, we have:</p>
+<p><span class="math display">\[
+y_t = l_{t-1} + \epsilon_t
+\]</span></p>
+<p><span class="math display">\[
+l_t = l_{t-1} + \eta_t
+\]</span></p>
+<p>for the measurement and the transition equation, respectively, where</p>
+<p><span class="math display">\[
+\epsilon_t \sim N(0, \sigma_{\epsilon})
+\]</span></p>
+<p><span class="math display">\[
+\eta_t \sim N(0, \sigma_{\eta}).
+\]</span></p>
+<p>The equivalent model in Innovation State Space form can be written as:</p>
+<p><span class="math display">\[
+y_t = l_{t-1} + \epsilon_t
+\]</span></p>
+<p><span class="math display">\[
+l_t = l_{t-1} + \alpha \cdot \epsilon_t
+\]</span></p>
+<p>where</p>
+<p><span class="math display">\[
+\epsilon_t \sim N(0, \sigma_{\epsilon}).
+\]</span></p>
+<p>In the following we will focus on the Innovation State Space Model formulation as we use the <code>forecast</code> package to fit the model in our examples. However, the conclusions translate to the Structural Model as</p>
+<p><span class="math display">\[
+\alpha = - \frac{\sigma^2_{\eta}}{2\sigma^2_{\epsilon}} + \sqrt{(1 + \frac{\sigma^2_{\eta}}{2\sigma^2_{\epsilon}})^2-1}
+\]</span></p>
+<p>for <span class="math inline">\(\alpha \in (0,1)\)</span> as is the parameter space allowed by the <code>forecast::ets()</code> implementation. For details, see chapter 13.4 of Hyndman et al. (2008).</p>
+<p>This local level model is equivalent to simple exponential smoothing. As such, it presents a trade-off between the two extremes of <a href="https://otexts.com/fpp3/simple-methods.html#naïve-method">random walk</a> and <a href="https://otexts.com/fpp3/simple-methods.html#mean-method">mean forecast</a> models. The mean model implies a constant level that doesn’t change over time. The random walk model implies a level that adjusts fully to the most recent observation. The simple exponential smoothing forecast is a mix of the two: As <span class="math inline">\(\alpha\)</span> tends towards 1, the resulting model adjusts more to the most recent observations, thus behaving similar to the random walk. Inversely, as <span class="math inline">\(\alpha\)</span> tends to 0, the level is barely adjusted based on the most recent observations and equals instead the arithmetic mean of all observations.</p>
+<p>Equivalently: If <span class="math inline">\(\sigma_{\epsilon}\)</span> is larger then <span class="math inline">\(\sigma_{\eta}\)</span>, the model will dominantly be driven by the observation noise and tend to the global mean. But if <span class="math inline">\(\sigma_{\eta}\)</span> is much larger than <span class="math inline">\(\sigma_{\epsilon}\)</span>, the model is driven by the innovation noise: The level adjusts a lot and dominates the observation noise, thus favoring a model more similar to a random walk.</p>
+<p>These simple observations have strong implications as to how state space models behave in the presence of anomalies and structural breaks.</p>
+<p>But let’s first look at an example series produced by this model.</p>
+<pre class="r"><code>#&#39; Sample a Local-Level Time Series via Multiple Sources of Error
+gen_ssm_series &lt;- function(n, sigma_obs, sigma_level, l_0 = 0) {
+  l_t &lt;- rep(l_0, times = n + 1)
+  y_t &lt;- rep(NA, times = n + 1)
+  
+  for (i in 2:(n+1)) {
+    l_t[i] &lt;- l_t[i-1] + rnorm(n = 1, mean = 0, sd = sigma_level)
+    y_t[i] &lt;- l_t[i-1] + rnorm(n = 1, mean = 0, sd = sigma_obs)
+  }
+  
+  return(y_t[-1])
+}</code></pre>
+<p>We use <span class="math inline">\(\sigma_{\epsilon} = 1\)</span> and <span class="math inline">\(\sigma_{\eta} = 1\)</span> (equivalent to <span class="math inline">\(\alpha = 0.62\)</span>) to generate a series based on equally strong measurement and transition noise.</p>
+<pre class="r"><code>library(ggplot2)
+library(forecast)
+set.seed(365)
+
+df &lt;- data.frame(
+  index = 1:80,
+  value = gen_ssm_series(n = 80, sigma_obs = 1, sigma_level = 1)
+)
+
+ggp_base &lt;- ggplot(df, aes(x = index, y = value)) +
+  geom_line(color = &quot;grey&quot;) +
+  geom_point(pch = 21, color = &quot;white&quot;, fill = &quot;black&quot;, cex = 2) +
+  labs(x = &quot;Index&quot;, y = &quot;Value&quot;)
+print(ggp_base)</code></pre>
+<p><img src="/post/2022-07-05-state-space-model-failure-modes_files/figure-html/ggp_base-1.png" width="672" /></p>
+<p>Knowing the true underlying model, we can fit a local-level model using the <code>forecast</code> package to try to recover the parameters.</p>
+<pre class="r"><code>ets_fit &lt;- forecast::ets(y = df$value, model = &quot;ANN&quot;)
+print(ets_fit)</code></pre>
+<pre><code>## ETS(A,N,N) 
+## 
+## Call:
+##  forecast::ets(y = df$value, model = &quot;ANN&quot;) 
+## 
+##   Smoothing parameters:
+##     alpha = 0.618 
+## 
+##   Initial states:
+##     l = -0.1009 
+## 
+##   sigma:  1.6243
+## 
+##      AIC     AICc      BIC 
+## 432.1522 432.4680 439.2983</code></pre>
+<p>With <code>alpha</code> estimated as about the expected 0.62, the fitting procedure appears able to recover the underlying model well.<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a> Let’s take a quick look at the corresponding forecast:</p>
+<pre class="r"><code>ggp_base + 
+  autolayer(forecast::forecast(ets_fit, h = 12))</code></pre>
+<p><img src="/post/2022-07-05-state-space-model-failure-modes_files/figure-html/ggp_base_w_forecast-1.png" width="672" /></p>
+<p>The model can be interpreted as interpolation between random walk and mean forecast, so it’s expected to be close to the recent level of the series. Additionally, the prediction intervals are increasing in width, but not as fast as those of a random walk model would, and clearly not constant as those of a mean forecast as the local level is expected to fluctuate in the future.</p>
+<p>So far so good. Now how is this impacted by anomalies and structural breaks?</p>
+</div>
+<div id="cause-for-trouble-1-anomalies" class="section level2">
+<h2>Cause for Trouble #1: Anomalies</h2>
+<p>Let’s consider an anomalous observation by adding it to the above series. To make the effect instructive, I won’t hold back—let’s make it <em>really</em> anomalous. This might look ridiculous, but believe me, this stuff exists.<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a></p>
+<pre class="r"><code>df_w_anomaly &lt;- df
+df_w_anomaly$value[55] &lt;- df_w_anomaly$value[55] + 100
+
+ggp_w_anomaly &lt;- ggplot(df_w_anomaly, aes(x = index, y = value)) +
+  geom_line(color = &quot;grey&quot;) +
+  geom_point(pch = 21, color = &quot;white&quot;, fill = &quot;black&quot;, cex = 2) +
+  labs(x = &quot;Index&quot;, y = &quot;Value&quot;)
+print(ggp_w_anomaly)</code></pre>
+<p><img src="/post/2022-07-05-state-space-model-failure-modes_files/figure-html/ggp_w_anomaly-1.png" width="672" /></p>
+<p>Let’s refit the model to consider the impact the anomaly has on the parameter estimates.</p>
+<pre class="r"><code>ets_fit_w_anomaly &lt;- forecast::ets(y = df_w_anomaly$value, model = &quot;ANN&quot;)
+print(ets_fit_w_anomaly)</code></pre>
+<pre><code>## ETS(A,N,N) 
+## 
+## Call:
+##  forecast::ets(y = df_w_anomaly$value, model = &quot;ANN&quot;) 
+## 
+##   Smoothing parameters:
+##     alpha = 1e-04 
+## 
+##   Initial states:
+##     l = 4.6512 
+## 
+##   sigma:  11.4091
+## 
+##      AIC     AICc      BIC 
+## 744.0427 744.3584 751.1887</code></pre>
+<p>Remember that the original fit of the model above resulted in an <code>alpha</code> value of 0.62 which reflected the underlying local-level model. In contrast, the <code>alpha</code> value now dropped to 0: Instead of estimating a smooth interpolation of random walk and mean forecast, this <code>alpha</code> parameter corresponds to an essentially pure mean forecast.</p>
+<p>This is immediately visible from the corresponding prediction intervals which are now constant:</p>
+<pre class="r"><code>ggp_w_anomaly + 
+  autolayer(forecast::forecast(ets_fit_w_anomaly, h = 12))</code></pre>
+<p><img src="/post/2022-07-05-state-space-model-failure-modes_files/figure-html/ggp_w_anomaly_w_forecast-1.png" width="672" /></p>
+<p>Zooming in to roughly the scale of the original plot it’s also clear that the underlying Gaussian distributional assumption translates the anomaly into much larger prediction intervals:</p>
+<pre class="r"><code>ggp_w_anomaly + 
+  autolayer(forecast::forecast(ets_fit_w_anomaly, h = 12)) +
+  coord_cartesian(ylim = c(-2.5, 15))</code></pre>
+<p><img src="/post/2022-07-05-state-space-model-failure-modes_files/figure-html/ggp_w_anomaly_w_forecast_zoomed-1.png" width="672" /></p>
+<p>Additionally, the forecast is clearly biased away from the most recent level as the current level of the series is not equal to its global average.</p>
+<p>Depending on the series itself and the size of the anomaly, a single anomaly leads the estimation procedure to choose an edge case of the structural time series parameter space, leading to poor forecasts.</p>
+<p>The reason for this is simple: The mean forecast has the overall smallest (squared) errors once the anomaly is added. By choosing a mean forecast rather than something closer to a random walk, we only make the error introduced by the anomaly once, whereas a random walk would make it twice: Once for the anomaly itself, and then a second time right after the anomaly when jumping back to the actual level.</p>
+<pre class="r"><code>df_w_anomaly_residuals &lt;- data.frame(
+  index = rep(df_w_anomaly$index, times = 2),
+  residuals = c(
+    df_w_anomaly$value - mean(df_w_anomaly$value),
+    df_w_anomaly$value - 
+      c(NA, df_w_anomaly$value[-length(df_w_anomaly$index)])
+  ),
+  Model = rep(c(&quot;Mean&quot;, &quot;Random Walk&quot;), 
+              each = length(df_w_anomaly$index))
+)
+
+ggplot(df_w_anomaly_residuals, aes(x = index, y = residuals)) +
+  geom_line(color = &quot;grey&quot;) +
+  geom_point(pch = 21, color = &quot;white&quot;, fill = &quot;black&quot;, cex = 2) +
+  labs(x = &quot;Index&quot;, y = &quot;Residual&quot;) +
+  facet_wrap(~ Model)</code></pre>
+<p><img src="/post/2022-07-05-state-space-model-failure-modes_files/figure-html/df_w_anomaly_residuals-1.png" width="672" /></p>
+<p>Let’s move on to the other cause for trouble: structural breaks.</p>
+</div>
+<div id="cause-for-trouble-2-structural-breaks" class="section level2">
+<h2>Cause for Trouble #2: Structural Breaks</h2>
+<p>While there are many kinds of structural breaks, I’m concerned with level shifts here. This is a bit simplistic but instructive: Let’s shift the last 25 observations upward by a constant to introduce the shift for this example.</p>
+<pre class="r"><code>df_w_shift &lt;- df
+df_w_shift$value[55:80] &lt;- df_w_shift$value[55:80] + 25
+
+ggp_w_shift &lt;- ggplot(df_w_shift, aes(x = index, y = value)) +
+  geom_line(color = &quot;grey&quot;) +
+  geom_point(pch = 21, color = &quot;white&quot;, fill = &quot;black&quot;, cex = 2) +
+  labs(x = &quot;Index&quot;, y = &quot;Value&quot;)
+print(ggp_w_shift)</code></pre>
+<p><img src="/post/2022-07-05-state-space-model-failure-modes_files/figure-html/ggp_w_shift-1.png" width="672" /></p>
+<p>As before, let’s refit the model to consider the impact the level shift has on the parameter estimates.</p>
+<pre class="r"><code>ets_fit_w_shift &lt;- forecast::ets(y = df_w_shift$value, model = &quot;ANN&quot;)
+print(ets_fit_w_shift)</code></pre>
+<pre><code>## ETS(A,N,N) 
+## 
+## Call:
+##  forecast::ets(y = df_w_shift$value, model = &quot;ANN&quot;) 
+## 
+##   Smoothing parameters:
+##     alpha = 0.7575 
+## 
+##   Initial states:
+##     l = -0.3653 
+## 
+##   sigma:  3.2533
+## 
+##      AIC     AICc      BIC 
+## 543.2815 543.5973 550.4275</code></pre>
+<p>The structural break leads to a new estimate of <code>alpha</code> at 0.76. Whereas the anomaly pushed the model towards a mean forecast, the level shift pushes it towards a random walk (though not all the way there) as that’s the model that adjusts quickest to the new level, thus avoiding the source of the single largest error in this data.</p>
+<p>Again, this is visible from the residuals of the two edge cases:</p>
+<pre class="r"><code>df_w_shift_residuals &lt;- data.frame(
+  index = rep(df_w_shift$index, times = 2),
+  residuals = c(
+    df_w_shift$value - mean(df_w_shift$value),
+    df_w_shift$value - 
+      c(NA, df_w_shift$value[-length(df_w_shift$index)])
+  ),
+  Model = rep(c(&quot;Mean&quot;, &quot;Random Walk&quot;), 
+              each = length(df_w_shift$index))
+)
+
+ggplot(df_w_shift_residuals, aes(x = index, y = residuals)) +
+  geom_line(color = &quot;grey&quot;) +
+  geom_point(pch = 21, color = &quot;white&quot;, fill = &quot;black&quot;, cex = 2) +
+  labs(x = &quot;Index&quot;, y = &quot;Residual&quot;) +
+  facet_wrap(~ Model)</code></pre>
+<p><img src="/post/2022-07-05-state-space-model-failure-modes_files/figure-html/df_w_shift_residuals-1.png" width="672" /></p>
+<p>While the residuals look reasonable, a random walk forecast is not really ideal for the data. It’s good to model the shift, yes—but beyond that it leads to prediction intervals that are larger and growing faster than the period before the shift or the period after the shift would imply by themselves.</p>
+<pre class="r"><code>ggp_w_shift + 
+  autolayer(forecast::forecast(ets_fit_w_shift, h = 12))</code></pre>
+<p><img src="/post/2022-07-05-state-space-model-failure-modes_files/figure-html/ggp_w_shift_w_forecast-1.png" width="672" /></p>
+</div>
+<div id="everything-works-as-intended" class="section level2">
+<h2>Everything Works as Intended</h2>
+<p>At this point, let me just reiterate that everything here works as intended.</p>
+<p>Anomalies are just large observation noise so that’s what the model focuses on, resulting in a forecast dominated by observation noise—the mean forecast.</p>
+<p>Level shifts are just large transition noise, so that’s what the model focuses on, resulting in a forecast dominated by transition noise—the random walk forecast.</p>
+<p>If you use standard state space model implementations for your applications, you might as well write unit tests that check these behaviors and show them to your stakeholders. If your stakeholders’ time series show these patterns, then your models will adjust their forecasts accordingly.</p>
+</div>
+<div id="everything-works-as-intended-and-yet" class="section level2">
+<h2>Everything Works as Intended, and yet…</h2>
+<p>These fits frustrate me. The time series look good for the most part! But a single anomaly, a single level shift can mess the forecast up and make the forecast distribution useless.</p>
+<p>With regard to anomalies, it would be nice to have model parameters that are robust against them but to reflect them properly in the uncertainty of the forecast. If we had fitted a model with <code>alpha</code> close to the original one but larger prediction intervals due to a larger <code>sigma</code>—that’s one thing. But the impact on the <code>alpha</code> and the corresponding bias of the forecast is not really acceptable. A low-hanging solution appears to be a different distributional assumption that replaces the Gaussian distribution as done in the <a href="https://orbit-ml.readthedocs.io/en/latest/tutorials/dlt.html">models of the Orbit package</a>. While this may fix the distorted <code>sigma</code> estimate, it won’t in general “fix” the smoothing parameters.</p>
+<p>The level shift is also a bummer. Even forgetting the first half of the series and only using the observations after the shift would lead to a more appropriate model fit! But forgetting history is not something the state space models do: All observations are used to evaluate the likelihood, always.</p>
+<p>Messy data needs messier models than the clean standard implementations with proven convergence behaviors.</p>
+</div>
+<div id="references" class="section level2">
+<h2>References</h2>
+<p>Andrew C. Harvey (1990). <strong>Forecasting, Structural Time Series Models and the Kalman Filter</strong>. <a href="https://doi.org/10.1017/CBO9781107049994">https://doi.org/10.1017/CBO9781107049994</a>.</p>
+<p>Rob Hyndman, Anne Koehler, Keith Ord, Ralph Snyder (2008). <strong>Forecasting with Exponential Smoothing: The State Space Approach</strong>. <a href="https://doi.org/10.1007/978-3-540-71918-2">https://doi.org/10.1007/978-3-540-71918-2</a>.</p>
+<p>Edwin Ng, Zhishi Wang, Huigang Chen, Steve Yang, Slawek Smyl (2020). <strong>Orbit: Probabilistic Forecast with Exponential Smoothing</strong>. <a href="https://arxiv.org/abs/2004.08492">https://arxiv.org/abs/2004.08492</a>.</p>
+<p>Steven L. Scott (2017). <strong>Fitting Bayesian structural time series with the bsts R package</strong>. <a href="https://www.unofficialgoogledatascience.com/2017/07/fitting-bayesian-structural-time-series.html">https://www.unofficialgoogledatascience.com/2017/07/fitting-bayesian-structural-time-series.html</a>.</p>
+</div>
+<div class="footnotes footnotes-end-of-document">
+<hr />
+<ol>
+<li id="fn1"><p>This is a lucky seed. Results will vary somewhat as you re-draw the series, of course. But most series will be recovered fairly well by the <code>forecast::ets()</code> function.<a href="#fnref1" class="footnote-back">↩︎</a></p></li>
+<li id="fn2"><p>The conclusions drawn from this example hold also for smaller anomalies, directionally.<a href="#fnref2" class="footnote-back">↩︎</a></p></li>
+</ol>
+</div>
