@@ -1,0 +1,151 @@
+---
+title: When Quantiles Do Not Suffice, Use Sample Paths Instead
+author: Tim Radtke
+date: '2022-07-25'
+slug: use-sample-paths
+categories: []
+tags: []
+---
+
+
+
+<p>I don’t need to convince you that you should absolutely, to one hundred percent, quantify your forecast uncertainty—right? We agree about the advantages of using probabilistic measures to answer questions and to automate decision making—correct? Great. Then let’s dive a bit deeper.</p>
+<p>So you’re forecasting not just to fill some numbers in a spreadsheet, you are trying to solve a problem, possibly aiming to make optimal decisions in a process concerned with the future. Then please, before you start to forecast, ask yourself the following: <em>“Does my problem concern a single time period, or does it span multiple periods?”</em></p>
+<p>This is a crucial question. Depending on your answer, you’ll either be fine with <em>marginal</em> forecast distributions, or you’ll have to take it a step further and estimate useful forecast <em>joint</em> forecast distributions.</p>
+<div id="marginal-forecast-distributions" class="section level2">
+<h2>Marginal Forecast Distributions</h2>
+<p>Marginal forecast distributions, summarized to a handful of quantiles, look like this:</p>
+<p><img src="/post/2022-07-25-use-sample-paths_files/figure-html/marginal_distribution_graph-1.png" width="672" /></p>
+<p>While this kind of visualization is extremely common, it hides the fact that we only know the distributions at the individual points in time, not how they relate to each other. A more honest visualization might be something along these lines:</p>
+<p><img src="/post/2022-07-25-use-sample-paths_files/figure-html/marginal_distribution_graph_alternative-1.png" width="672" /></p>
+<p>Marginal forecast distributions describe the probability of outcomes <em>at a single point in time</em>. If you sample observations at a monthly frequency, a marginal forecast distribution describes possible outcomes for a single month. If you sample observations for your time series every hour, a marginal forecast distribution describes possible outcomes for a given hour. Of course you can have marginal forecast distributions for several months or hours. But they don’t tell you how January relates to February.</p>
+<p>Marginal forecasts can answer questions such as:</p>
+<ul>
+<li>“How likely is it that the wind turbine can cover the electricity load in the next hour without us activating the coal plant?”</li>
+<li>“Do I need to buy additional beach chairs to be able to offer one to 95% of my hotel guests that ask for one <em>today</em>?”</li>
+</ul>
+<p>It’s easy to believe that marginal forecast distributions are the only forecast distributions there are. After all, in many cases forecast quantiles are <a href="https://cran.r-project.org/web/packages/forecast/forecast.pdf">the default output</a> <a href="https://www.statsmodels.org/stable/generated/statsmodels.tsa.base.prediction.PredictionResults.summary_frame.html?highlight=predict%20frame">of forecast libraries</a><a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a> and <a href="https://www.kaggle.com/competitions/m5-forecasting-uncertainty/overview/evaluation">all you need in forecasting competitions</a> (if <a href="https://www.kaggle.com/competitions/rossmann-store-sales/overview/evaluation">at</a> <a href="https://www.kaggle.com/competitions/web-traffic-time-series-forecasting/overview/evaluation">all</a>). And as in electricity load forecasting, sometimes marginal forecast distributions really are all that’s needed to solve a problem.</p>
+<p>But there are common problems in which one needs to quantify uncertainty across multiple time periods, flexibly. Problems in which the question is inter-temporal. To answer questions as simple as “How likely is it that the weather is going to be hot both tomorrow <em>and</em> the day after tomorrow?” we need <em>joint</em> forecast distributions.</p>
+</div>
+<div id="joint-forecast-distributions" class="section level2">
+<h2>Joint Forecast Distributions</h2>
+<p>Whereas marginal forecast distributions quantify the uncertainty of an outcome <span class="math inline">\(Y_{t_i}\)</span> at a single time period <span class="math inline">\(t_i\)</span>, joint forecast distributions do so for the outcomes <span class="math inline">\(Y_{t_i}\)</span>, <span class="math inline">\(Y_{t_j}\)</span>, … at multiple future time periods <span class="math inline">\(t_i\)</span>, <span class="math inline">\(t_j\)</span>, … The graphs above have visualized the marginal distributions <span class="math inline">\(P(Y_{T+1} | Y_{T}, Y_{T-1}, ...)\)</span>, <span class="math inline">\(P(Y_{T+2} | Y_{T}, Y_{T-1}, ...)\)</span>, and so on. Since these are <em>separate</em> distributions, it was illustrative to turn the ribbon graph into separate vertical lines, each representing one of the marginal distributions.</p>
+<p>Now, however, we turn our attention to <em>one</em> big joint distribution over all future time periods of interest: <span class="math inline">\(P(Y_{T+1}, Y_{T+2}, ... | Y_{T}, Y_{T-1}, ...)\)</span>. The main selling point of joint distributions is that they not only tell us how future periods relate to the past, but also describe how future periods relate to each other. Given their inherent high dimensionality (were often interested in more than 2 forecast horizons), however, it’s difficult to visualize the relationships implied by the joint distribution.</p>
+<p>You could, of course, summarize them as marginal forecasts and visualize them in the same way. But this hides most of the information contained in the joint distribution forecast. Instead we can, for example, visualize the two-dimensional joint distributions for forecast horizons 1 and 2, 2 and 3, and 1 and 3, respectively:</p>
+<p><img src="/post/2022-07-25-use-sample-paths_files/figure-html/two_points_density-1.png" width="672" /></p>
+<p>This reveals the correlation between outcomes at subsequent points in time. Given that our example time series exhibits strong autocorrelation, proper forecasts will project that autocorrelation into the future, and the estimated joint forecast distribution will represent it.</p>
+<p>Unsurprisingly, when forecasting, we usually aren’t able to derive a closed form definition of the joint distribution. A great way to represent the distribution is <a href="https://betanalpha.github.io/assets/case_studies/sampling.html">by drawing many samples from it</a> instead. If we choose our forecast model wisely, it can generate these samples for us. We can then <a href="https://en.wikipedia.org/wiki/Monte_Carlo_method#Definitions">use the samples to answer questions</a> for which we usually needed to compute integrals with the density function.</p>
+<p>Here is the same plot of the joint distributions, but now with the samples that I’m using in the background to generate the graphs—I don’t know the joint distribution, the contour lines are an approximation of the true density computed from samples:</p>
+<p><img src="/post/2022-07-25-use-sample-paths_files/figure-html/two_points_density_scatter-1.png" width="672" /></p>
+</div>
+<div id="joint-forecasts-as-sample-paths" class="section level2">
+<h2>Joint Forecasts as Sample Paths</h2>
+<p>While the plots above are nice, the best way to think about and work with joint forecasts are sample paths. Sample paths are samples from the joint forecast distribution.<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a> They represent possible paths that the time series is expected to take into the future. Not every model can provide them, but often a model can generate a sample path iteratively starting at the last observation and then simulating an outcome over several forecast horizons. By drawing many sample paths from the model, we can infer which ranges of outcomes are likely.</p>
+<p>So let’s pick 10 sample paths from all the available ones, …</p>
+<p><img src="/post/2022-07-25-use-sample-paths_files/figure-html/two_points_density_scatter_picked-1.png" width="672" /></p>
+<p>… and then render them as possible continuations of the original time series.</p>
+<p><img src="/post/2022-07-25-use-sample-paths_files/figure-html/ggp_sample_paths-1.png" width="672" /></p>
+<p>Plotting a few sample paths is great to get a quick sense of possible outcomes and how well the forecast model represents the characteristics of the original series. The correlation between the different horizons becomes apparent, in contrast to the graphs of marginal distributions above.</p>
+<p>Plotting many sample paths on top of each other makes it harder to spot these correlations, but we get a sense of the overall possible ranges that can be achieved.</p>
+<p><img src="/post/2022-07-25-use-sample-paths_files/figure-html/ggp_sample_paths_many-1.png" width="672" /></p>
+<p>And we see that the extremal quantiles at the last horizon are usually only reached if the sample paths trended toward them at earlier points as well—in contrast to what the marginal distributions might suggest.</p>
+<p>In fact, given sufficient samples, we can take this a step further and derive conditional sample paths: Demanding that we reach a point higher than at the last observation at forecast horizon 6 (this level is indicated by the horizontal line), let’s plot all sample paths that lead us there.</p>
+<p><img src="/post/2022-07-25-use-sample-paths_files/figure-html/ggp_sample_paths_conditional-1.png" width="672" /></p>
+<p>By conditioning on paths that reach a certain value at horizon 6, we filter out a large chunk of outcomes that were deemed likely before. The remaining sample paths illustrate the forecast distribution conditioned on a certain outcome at <em>also</em> a future point, whereas usually forecast distributions are only ever presented conditioned on the past.</p>
+<p>This illustrates that we can answer hard questions in simple ways when we have access to sample paths.</p>
+</div>
+<div id="answering-hard-questions-by-summing-and-counting" class="section level2">
+<h2>Answering Hard Questions by Summing and Counting</h2>
+<p>When you have quantiles of the marginal forecast distribution, then all you have are quantiles from the marginal forecast distribution. Samples from the marginal forecast distribution are a bit better, as they let you compute quantiles of arbitrary functions of your outcome at a single point in time. Samples from the joint distribution though are where it’s at: With them we can answer questions across arbitrary combinations of forecast horizons, arbitrary functions of those forecasts, at arbitrary quantiles. And since we’re working with samples, we don’t even have to compute integrals: All we need to do is to sum and to count, following the <a href="https://betanalpha.github.io/assets/case_studies/sampling.html#31_The_Monte_Carlo_Method">Monte-Carlo method</a>.<a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a></p>
+<div id="scenario-1-forecast-of-costs-for-the-full-year" class="section level3">
+<h3>Scenario 1: Forecast of Costs for the Full Year</h3>
+<p>Suppose the time series above represents the costs of a business division of the company you work for as data scientist. Your stakeholders asked for forecasts for the upcoming year and you provided them with the marginal quantile forecasts from the first graph above. They like those, but follow up with: “So what’s the 50% prediction interval for the costs we will generate in the entire year?”</p>
+<p>Oops! If all you had were marginal quantiles, you’d be hard pressed to provide an answer. Sure, you can sum up the mean predictions to get a mean prediction for the full year, but you can’t expect to sum up every month’s 25% quantile to get the 25% quantile for the full year—quantiles aren’t additive.</p>
+<p>Luckily, you generated joint forecast distributions and saved them as sample paths. So all you need to do to find the answer is to sum up each sample path’s realizations before computing the quantiles of those sums. Based on the example below, there is a 50% probability that the total costs generated in the coming year will range from 1760 to 2145.</p>
+<p><img src="/post/2022-07-25-use-sample-paths_files/calculate_full_year.png" /></p>
+</div>
+<div id="scenario-2-out-of-stock-forecast" class="section level3">
+<h3>Scenario 2: Out-of-Stock Forecast</h3>
+<p>Prolific data scientist that you are, you provided other stakeholders with monthly demand forecasts. “When do we need to create the next replenishment order for this product given that it takes two months for the order to arrive, a current inventory level of 900 units, and a service level of 90% (in one of 10 cases a stock-out is acceptable)?”, they ask you.</p>
+<p>Different from the first scenario where you always had to sum all 12 months, here you need to predict the optimal point in time to trigger the order. To do so, first compute the cumulative sum for each sample path. This way, you get the distribution of the “total sum until each point in time”, at each point in time.</p>
+<p>For each point in time, you want to know whether the 90% quantile is larger than the current stock, because as soon as this is the case, there is a larger than 90% probability that the current inventory will not suffice until the end of that month. Consequently, the order should be triggered 2 months before that point to ensure you don’t run out of stock with 90% probability.</p>
+<p><img src="/post/2022-07-25-use-sample-paths_files/calculate_order.png" /></p>
+</div>
+<div id="scenario-3-order-size" class="section level3">
+<h3>Scenario 3: Order Size</h3>
+<p>“Assuming that we indeed trigger the order in April and that the entire inventory is used up when the delivery arrives: How much should we order to cover at least 3 months with 90% probability?”</p>
+<p>Since we are using sample paths to generate our answers, it is straightforward to answer questions which are concerned with an arbitrary time interval in the future. Instead of starting the sum at the first forecast horizon, take the sum over the three months in question (forecast horizons 6 through 8) and determine the quantile in question. To cover the demand of the three months in question with a probability of 90%, you need to order at least 554 units based on the sample paths shown below.</p>
+<p><img src="/post/2022-07-25-use-sample-paths_files/calculate_order_size.png" /></p>
+</div>
+</div>
+<div id="the-sum-of-quantiles-is-not-the-quantile-of-the-sums" class="section level2">
+<h2>The Sum of Quantiles Is not the Quantile of the Sums</h2>
+<p>The reason all of this is even relevant is that the sum of quantiles is not the quantile of the sums. In scenario 1 above we solved the problem by computing the quantile of the sum. But we can’t answer the question by taking the sum of the quantiles. In contrast to the expected value, quantile functions are not additive.</p>
+<p>This implies that marginal forecast distributions in the form of quantiles will only ever be able to answer a limited set of questions. In contrast, joint distributions can be summarized to the marginal distributions and thus offer the full flexibility to answer any question concerning the future.</p>
+<p>There are important problems for which marginal forecasts suffice. Electricity load forecasting, for example. But to provide actionable recommendations in problems such as inventory management, one needs access to the joint forecast distribution.</p>
+<p>When reading papers and blog posts describing models designed for forecasting, the difference between marginal forecast distributions and joint forecast distributions is often swept under the carpet (by those that only offer marginal distributions). A showcase of this is the <a href="https://arxiv.org/pdf/1711.11053.pdf">Multi-Horizon Quantile Recurrent Forecaster paper</a> by Wen et al. at Amazon. While they evaluate their model on an internal Amazon demand forecasting data set, they noticeably don’t use the same evaluation metric that a different Amazon team around Salinas et al. used in the <a href="https://arxiv.org/pdf/1704.04110.pdf">DeepAR paper</a>. Salinas et al.’s <span class="math inline">\(\rho\)</span>-risk metric evaluates the demand forecasts over a span of time points, very similar to the three scenarios described above. Thus unsurprisingly, they make a point of using sample paths to do so:</p>
+<blockquote>
+<p>To obtain such a quantile prediction from a set of sample paths, each realization is first summed in the given span. The samples of these sums then represent the estimated distribution for <span class="math inline">\(Z_i(L, S)\)</span> and we can take the <span class="math inline">\(\rho\)</span>-quantile from the empirical distribution.</p>
+</blockquote>
+<p>To their credit, while Wen et al. don’t discuss this shortcoming in their MQ-RNN paper, they did publish a follow-up paper, <a href="https://milets18.github.io/papers/milets18_paper_14.pdf">Sample Path Generation for Probabilistic Demand Forecasting</a> by Madeka et al., that tries to turn their neural network’s quantiles into sample paths. As part of this, they also describe in detail why their quantiles do not suffice for inter-temporal decision making:</p>
+<blockquote>
+<p>However, since quantiles aren’t additive, in order to predict the total demand for any wider future interval all required intervals are usually appended to the target vector during model training. The separate optimization of these overlapping intervals can lead to inconsistent forecasts, i.e. forecasts which imply an invalid joint distribution between different horizons. As a result, inter-temporal decision making algorithms that depend on the joint or step-wise conditional distribution of future demand cannot utilize these forecasts.</p>
+</blockquote>
+<p>Choose your model based on the questions you want to answer.</p>
+</div>
+<div id="references" class="section level2">
+<h2>References</h2>
+<p>Michael Betancourt (2021). <strong>Sampling</strong>. Retrieved from <a href="https://github.com/betanalpha/knitr_case_studies/tree/master/sampling" class="uri">https://github.com/betanalpha/knitr_case_studies/tree/master/sampling</a>, commit eb27fbdb5063220f3d335024d2ae5e2bfdf70955.</p>
+<p>Dhruv Madeka, Lucas Swiniarski, Dean Foster, Leo Razoumov, Kari Torkkola, Ruofeng Wen (2018). <strong>Sample Path Generation for Probabilistic Demand Forecasting</strong>. <a href="https://milets18.github.io/papers/milets18_paper_14.pdf">Link to PDF from 4th Workshop on Mining and Learning from Time Series</a>.</p>
+<p>David Salinas, Valentin Flunkert, Jan Gasthaus (2017). <strong>DeepAR: Probabilistic Forecasting with Autoregressive Recurrent Networks</strong>. <a href="https://arxiv.org/abs/1704.04110">https://arxiv.org/abs/1704.04110</a>.</p>
+<p>Syama Sundar Rangapuram, Matthias W. Seeger, Jan Gasthaus, Lorenzo Stella, Yuyang Wang, Tim Januschowski (2018). <strong>Deep State Space Models for Time Series Forecasting</strong>. <a href="https://papers.nips.cc/paper/2018/hash/5cf68969fb67aa6082363a6d4e6468e2-Abstract.html">Advances in Neural Information Processing Systems 31 (NeurIPS 2018)</a>. (Section 4.2 and the subsequent remarks are especially relevant).</p>
+<p>Ruofeng Wen, Kari Torkkola, Balakrishnan Narayanaswamy, Dhruv Madeka (2017). <strong>A Multi-Horizon Quantile Recurrent Forecaster</strong>. <a href="https://arxiv.org/abs/1711.11053">https://arxiv.org/abs/1711.11053</a>.</p>
+</div>
+<div id="appendix-drawing-sample-paths" class="section level2">
+<h2>Appendix: Drawing Sample Paths</h2>
+<p>Generating high-quality sample paths from a model is not always easy. For the examples above, instead of fitting a model, I used the function by which I generated the observed time series to also generate the “forecasted” sample paths as possible continuations of the observed series. This is as if I had chosen the correct model class and recovered the exact parameter of the data generating process. Also called cheating.</p>
+<p>It also shows, though, why it helps to be able to write down a data generating process when you want to generate sample paths. The one I used above is a random walk with drift and Student’s t-distributed noise with 4 degrees of freedom:</p>
+<p><span class="math display">\[
+y_t = y_{t-1} + \mu + \sigma \cdot \epsilon_t
+\]</span></p>
+<p><span class="math display">\[
+\epsilon_t \sim Student(4)
+\]</span></p>
+<p>The following function implements this model. <span class="math inline">\(\mu\)</span> / <code>mu</code> regulates the drift of the series, whereas <span class="math inline">\(\sigma\)</span> / <code>sigma</code> determines the size of the noise. We use a Student’s t-distributed noise to not have just a Normal distribution. The <code>initial_value</code> is used to provide an overall level when generating the initial series, and to condition the forecasts on the input series.</p>
+<pre class="r"><code>random_student_walk &lt;- function(n, mu, sigma, initial_value) {
+  y &lt;- rep(NA, times = n)
+  
+  y[1] &lt;- initial_value + mu + sigma * rt(n = 1, df = 4)
+  for (i in 2:n) {
+    y[i] &lt;- y[i-1] + mu + sigma * rt(n = 1, df = 4)
+  }
+  
+  return(y)
+}</code></pre>
+<p>The observed series can then be generated using an intial value of 100:</p>
+<pre class="r"><code>set.seed(572)
+n_obs &lt;- 60
+
+y &lt;- random_student_walk(
+  n = n_obs, mu = 1, sigma = 5, initial_value = 100
+)
+tail(y)</code></pre>
+<pre><code>## [1] 145 143 147 151 148 154</code></pre>
+<p>We can generate one forecasted sample path by conditioning on the last observation (assuming really well estimated parameters and choice of model):</p>
+<pre class="r"><code>random_student_walk(n = 12, mu = 1, sigma = 5, initial_value = y[n_obs])</code></pre>
+<pre><code>##  [1] 166 162 158 175 177 178 179 179 183 181 190 184</code></pre>
+<p>And another one:</p>
+<pre class="r"><code>random_student_walk(n = 12, mu = 1, sigma = 5, initial_value = y[n_obs])</code></pre>
+<pre><code>##  [1] 145 145 146 147 141 139 135 135 162 166 164 161</code></pre>
+<p>Third time’s a charm:</p>
+<pre class="r"><code>random_student_walk(n = 12, mu = 1, sigma = 5, initial_value = y[n_obs])</code></pre>
+<pre><code>##  [1] 162 153 155 157 152 152 149 158 160 173 182 184</code></pre>
+</div>
+<div class="footnotes footnotes-end-of-document">
+<hr />
+<ol>
+<li id="fn1"><p>Try <code>forecast::forecast(AirPassengers)</code> to see what I mean.<a href="#fnref1" class="footnote-back">↩︎</a></p></li>
+<li id="fn2"><p>Since the joint distribution is multidimensional across forecast horizons, a single sample is not a scalar but a vector. Many samples form a matrix. If we considered multiple time series, sample paths would form a tensor.<a href="#fnref2" class="footnote-back">↩︎</a></p></li>
+<li id="fn3"><p>Obviously we’re still computing integrals—just instead of doing the math we <a href="https://en.wikipedia.org/wiki/Numerical_integration">approximate them by counting samples</a>.<a href="#fnref3" class="footnote-back">↩︎</a></p></li>
+</ol>
+</div>
