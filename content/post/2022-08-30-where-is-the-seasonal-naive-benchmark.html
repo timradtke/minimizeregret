@@ -1,0 +1,282 @@
+---
+title: Where Is the Seasonal Naive Benchmark?
+author: Tim Radtke
+date: '2022-08-30'
+slug: where-is-the-seasonal-naive-benchmark
+categories: []
+tags: []
+---
+
+
+
+<p>Yesterday morning, I retweeted <a href="https://twitter.com/sklearn_inria/status/1564150456938643458">this tweet</a> by <a href="https://twitter.com/sklearn_inria">sklearn_inria</a> that promotes <a href="https://scikit-learn.org/1.1/auto_examples/applications/plot_cyclical_feature_engineering.html">a scikit-learn tutorial notebook</a> on time-related feature engineering. It’s a neat notebook that shows off some fantastic ways of creating features to predict time series within a scikit-learn pipeline.</p>
+<p>There are, however, two things that irk me:</p>
+<ol style="list-style-type: decimal">
+<li>All features of the dataset <em>including the hourly weather</em> are passed to the model. I don’t know the details of this dataset, but skimming what I believe to be <a href="https://www.openml.org/search?type=data&amp;status=active&amp;id=42712">its description on the OpenML repository</a>, I suspect this might introduce data leakage as in reality we can’t know the exact hourly humidity and temperature days in advance.</li>
+<li>There is no comparison against the simplest benchmark method, the one predicting the value from a week ago (the <a href="https://otexts.com/fpp3/simple-methods.html#seasonal-naïve-method">seasonal naive</a> method). Given the daily and weekly seasonality, it should be possible to capture a ton of signal by predicting the same number of bike rentals that were observed a week ago.</li>
+</ol>
+<p>To be clear, I don’t think it’s the responsibility of a scikit-learn tutorial to be all encompassing. It’s created to show off scikit-learn features. That’s what it does, and that’s fine. But here we can have some fun, so let’s see how far we can get when we drop the weather-related columns, and by using the simplest of benchmarks only.</p>
+<p>To start off, let’s do a bit of a speed run through the pipeline setup used in the original notebook.</p>
+<div id="first-look-at-the-bike-sharing-data" class="section level2">
+<h2>First Look at the Bike Sharing Data</h2>
+<p>The data used in the notebook are bike sharing demand observed as hourly time series for a period of about two years in 2011 and 2012. In contrast to other datasets of its kind, this dataset consists of a single series. The tutorial loads it from the OpenML repository:</p>
+<pre class="python"><code>from sklearn.datasets import fetch_openml
+
+bike_sharing = fetch_openml(&quot;Bike_Sharing_Demand&quot;, version=2, as_frame=True)
+df = bike_sharing.frame</code></pre>
+<p>To take a sneak peek at what the time series looks like, the tutorial computes the average hourly demand over observed across the entire dataset:</p>
+<p><img src="/post/2022-08-30-where-is-the-seasonal-naive-benchmark_files/figure-html/average_hourly_demand-1.png" /></p>
+<p>Unsurprisingly, the bike sharing demand is highly seasonal. There is a within-day pattern that repeats on weekdays corresponding to demand from commuters. Also, weekends are clearly distinct from weekdays but likely similar across weekends (in theory this is not visible from this plot, but…). Absent any drastic trends, and ignoring the slower yearly seasonality given that we will focus on short-term forecasts, most of the signal from one week to the next will come from the daily and weekly seasonality. Any model we use should be designed to capture it. And that’s what the tutorial does, it demonstrates different ways to capture the seasonal patterns via feature engineering.</p>
+<p>While most of the feature engineering is done to reduce the error of linear regression-based models, the best model of the tutorial turns out to be <a href="https://scikit-learn.org/1.1/auto_examples/applications/plot_cyclical_feature_engineering.html#gradient-boosting">the gradient boosting model that is evaluated first</a> and uses none of the fancy transformations. That’s the model we focus on now.</p>
+</div>
+<div id="setup-of-the-original-gradient-boosting-pipeline" class="section level2">
+<h2>Setup of the Original Gradient Boosting Pipeline</h2>
+<p>First, the target column <code>count</code> is standardized by dividing by the largest observation. Thus we don’t predict the count of bike rentals directly, but the share of the largest possible hourly demand. This means that a mean absolute error of 0.01 corresponds to 1pp difference from the actually observed percent of maximum demand. The transformed column is assigned to <code>y</code>, then dropped from the dataframe to create the feature matrix <code>X</code>.</p>
+<pre class="python"><code>y = df[&quot;count&quot;] / df[&quot;count&quot;].max()
+X = df.drop(&quot;count&quot;, axis=&quot;columns&quot;)</code></pre>
+<p>The initial model matrix consists of the following features (the range shown here is a bit misleading for the categorical columns). Note the weather-related columns such as <code>temp</code>, <code>humidity</code>, and <code>windspeed</code>. These are the problematic features mentioned in the introduction.</p>
+<pre class="python"><code>for col in X.columns:
+    print(f&quot;&#39;{col}&#39; with values in [{min(X[col])}, {max(X[col])}]&quot;)</code></pre>
+<pre><code>## &#39;season&#39; with values in [fall, winter]
+## &#39;year&#39; with values in [0.0, 1.0]
+## &#39;month&#39; with values in [1.0, 12.0]
+## &#39;hour&#39; with values in [0.0, 23.0]
+## &#39;holiday&#39; with values in [False, True]
+## &#39;weekday&#39; with values in [0.0, 6.0]
+## &#39;workingday&#39; with values in [False, True]
+## &#39;weather&#39; with values in [clear, rain]
+## &#39;temp&#39; with values in [0.8200000000000001, 41.0]
+## &#39;feel_temp&#39; with values in [0.0, 50.0]
+## &#39;humidity&#39; with values in [0.0, 1.0]
+## &#39;windspeed&#39; with values in [0.0, 56.996900000000004]</code></pre>
+<p>As <code>heavy_rain</code> was a rare occurence, it’s grouped together with <code>rain</code>.</p>
+<pre class="python"><code>X[&quot;weather&quot;].replace(to_replace=&quot;heavy_rain&quot;, value=&quot;rain&quot;, inplace=True)</code></pre>
+<p>The tutorial uses a time series cross validation with five splits and a gap between train and validation of 48 hours. This gap of 48 hours is what we’ll use as the definition of the necessary lag between the moment of creating the prediction, and the moment that we predict. For example, if we need to schedule 48 hours in advance the number of bikes brought into circulation from repairs, then we can’t wait to observe the demand at 3pm today to plan for tomorrow’s demand. Instead, the latest information we can take into account is the demand observed yesterday, 48 hours in advance.</p>
+<p>Thus, we won’t consider a daily seasonal naive model that projects the observation from 24 hours ago into the future. And because of this lag, the weather columns are somewhat unrealistic. But more on this in a moment.</p>
+<p>We define the splits, each of which evaluates on a test set of about 42 days.</p>
+<pre class="python"><code>from sklearn.model_selection import TimeSeriesSplit
+
+ts_cv = TimeSeriesSplit(
+    n_splits=5,
+    gap=48,
+    max_train_size=10000,
+    test_size=1000,
+)
+
+all_splits = list(ts_cv.split(X, y))
+
+# this split is used to plot predictions from the models below
+train_0, test_0 = all_splits[0]</code></pre>
+<p>The splits will be used to evaluate the model pipelines. For that, an evaluation helper is defined that uses both MAE and RMSE as metrics.</p>
+<pre class="python"><code>def print_metrics(mae, rmse):
+  print(
+        f&quot;Mean Absolute Error:     {mae.mean():.3f} +/- {mae.std():.3f}\n&quot;
+        f&quot;Root Mean Squared Error: {rmse.mean():.3f} +/- {rmse.std():.3f}&quot;
+    )
+
+def evaluate(model, X, y, cv):
+    cv_results = cross_validate(
+        model,
+        X,
+        y,
+        cv=cv,
+        scoring=[&quot;neg_mean_absolute_error&quot;, &quot;neg_root_mean_squared_error&quot;],
+    )
+    mae = -cv_results[&quot;test_neg_mean_absolute_error&quot;]
+    rmse = -cv_results[&quot;test_neg_root_mean_squared_error&quot;]
+    print_metrics(mae, rmse)</code></pre>
+<p>Next, the tutorial defines the pipeline object (note the inclusion of the <code>weather</code> column).</p>
+<pre class="python"><code>import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.pipeline import make_pipeline
+from sklearn.preprocessing import OrdinalEncoder
+from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import HistGradientBoostingRegressor
+from sklearn.model_selection import cross_validate
+
+categorical_columns = [
+    &quot;weather&quot;,
+    &quot;season&quot;,
+    &quot;holiday&quot;,
+    &quot;workingday&quot;,
+]
+categories = [
+    [&quot;clear&quot;, &quot;misty&quot;, &quot;rain&quot;],
+    [&quot;spring&quot;, &quot;summer&quot;, &quot;fall&quot;, &quot;winter&quot;],
+    [&quot;False&quot;, &quot;True&quot;],
+    [&quot;False&quot;, &quot;True&quot;],
+]
+ordinal_encoder = OrdinalEncoder(categories=categories)
+
+gbrt_pipeline = make_pipeline(
+    ColumnTransformer(
+        transformers=[
+            (&quot;categorical&quot;, ordinal_encoder, categorical_columns),
+        ],
+        remainder=&quot;passthrough&quot;,
+    ),
+    HistGradientBoostingRegressor(
+        categorical_features=range(4),
+    ),
+)</code></pre>
+<p>And finally the cross validation performance is being evaluated. Note that we pass the entire model matrix <code>X</code> here—including columns describing the hourly temperature, humidity, and wind speed!</p>
+<pre class="python"><code>evaluate(gbrt_pipeline, X, y, cv=ts_cv)</code></pre>
+<pre><code>## Mean Absolute Error:     0.044 +/- 0.003
+## Root Mean Squared Error: 0.068 +/- 0.005</code></pre>
+<p>This reproduces the performance shown in the tutorial notebook exactly, perfect. Given the standardization that was applied on the series, the mean absolute error corresponds to an error of about 4.4% of the highest hourly demand observed across the time period. Given the maximum of 977 hourly bike rentals, that’s an error of about 42 bike rentals.</p>
+<p>Let’s drop the weather-related features and evaluate again.</p>
+</div>
+<div id="gradient-boosting-without-weather-features" class="section level2">
+<h2>Gradient Boosting Without Weather Features</h2>
+<p>We define the pipeline as before, dropping <code>weather</code> from the categorical columns and then explicitly selecting columns from <code>X</code> to not pass through the temperature, humidity, and wind speed. We only keep the columns for which we can know the values in advance.</p>
+<pre class="python"><code>categorical_columns_no_weather = [
+    &quot;season&quot;,
+    &quot;holiday&quot;,
+    &quot;workingday&quot;,
+]
+categories_no_weather = [
+    [&quot;spring&quot;, &quot;summer&quot;, &quot;fall&quot;, &quot;winter&quot;],
+    [&quot;False&quot;, &quot;True&quot;],
+    [&quot;False&quot;, &quot;True&quot;],
+]
+ordinal_encoder_no_weather = OrdinalEncoder(categories=categories_no_weather)
+
+gbrt_no_weather_pipeline = make_pipeline(
+    ColumnTransformer(
+        transformers=[
+            (&quot;categorical&quot;, ordinal_encoder_no_weather, categorical_columns_no_weather),
+        ],
+        remainder=&quot;passthrough&quot;,
+    ),
+    HistGradientBoostingRegressor(
+        categorical_features=range(3),
+    ),
+)
+
+X_no_weather = X[
+  [&#39;season&#39;, &#39;year&#39;, &#39;month&#39;, &#39;hour&#39;, &#39;holiday&#39;, &#39;weekday&#39;, &#39;workingday&#39;]
+]</code></pre>
+<p>Evaluate the new pipeline on the same time series splits:</p>
+<pre class="python"><code>evaluate(gbrt_no_weather_pipeline, X_no_weather, y, cv=ts_cv)</code></pre>
+<pre><code>## Mean Absolute Error:     0.062 +/- 0.011
+## Root Mean Squared Error: 0.094 +/- 0.015</code></pre>
+<p>The MAE increased by 1.8pp. Note also the increase in the standard deviation across splits. The performance clearly worsened, but still isn’t too shabby given that we didn’t put much effort into building this model.</p>
+<p>Can we get away with even less work?</p>
+</div>
+<div id="comparison-with-seasonal-naive-method" class="section level2">
+<h2>Comparison with Seasonal Naive Method</h2>
+<p>Given that the data has several seasonal effects (daily, weekly, yearly), there is no one way to set up a seasonal naive prediction: We could use the value from 24 hours ago, the value from a week ago (168 hours), or even a mix of the two.<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a> As desribed above, we’ll focus on the weekly seasonal naive prediction due to the gap of 48 hours between train and test sets. A lag of one week is anyway more realistic for operational decisions.</p>
+<p>Given the simplicity of the seasonal naive method, we just need to shift the label series. Since the cross validation splits use a gap of 48 hours that is smaller than our lag, we don’t need to do this for each cross validation split. We can do it once across the entire data set and still don’t introduce target leakage.<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a></p>
+<pre class="python"><code>snaive = y.shift(168)
+print(snaive[165:172])</code></pre>
+<pre><code>## 165         NaN
+## 166         NaN
+## 167         NaN
+## 168    0.016377
+## 169    0.040942
+## 170    0.032753
+## 171    0.013306
+## Name: count, dtype: float64</code></pre>
+<p>A custom cross validation loop gives us the performance of the seasonal naive method (i.e., of the new column) compared to the target, on the same splits that we used for the gradient boosting models.</p>
+<pre class="python"><code>mae = np.empty(5)
+rmse = np.empty(5)
+
+for i in range(5):
+    _, test_idx = all_splits[i]
+    mae[i] = np.mean(np.abs(
+      y.iloc[test_idx].values - snaive.iloc[test_idx].values
+    ))
+    rmse[i] = np.sqrt(np.mean(np.square(
+      y.iloc[test_idx].values - snaive.iloc[test_idx].values
+    )))
+
+print_metrics(mae, rmse)</code></pre>
+<pre><code>## Mean Absolute Error:     0.073 +/- 0.022
+## Root Mean Squared Error: 0.123 +/- 0.036</code></pre>
+<p>How is that for a one-liner: 7.3% mean absolute error compared to the 6.2% of the gradient boosted trees model without weather features. Given that the seasonal naive method requires neither code nor infrastructure, and is inherently interpretable, one has to check the details of the business case whether any other method is worth the effort. A large chunk of the time series’ signal is already captured by this method.</p>
+<p>Then again, the gradient boosted trees pipeline we compare against is the simplest version possible and only served as baseline in the tutorial. It could likely be improved further.</p>
+<p>But the dataset at hand is also quite simple. Real use cases would likely have multiple series and <a href="https://minimizeregret.com/post/2022/07/25/use-sample-paths/">require uncertainty quantification</a>, thus increasing the effort going into building a model. This makes it even more important to compare against the simplest of benchmarks.</p>
+<hr />
+<p>We can round this analysis off by plotting the predictions and errors of the models, similar to what was done in the scikit-learn notebook.</p>
+</div>
+<div id="graph-of-predictions-over-time" class="section level2">
+<h2>Graph of Predictions Over Time</h2>
+<p>We generate predictions for the first test set as defined by the cross validation split.</p>
+<pre class="python"><code>gbrt_pipeline.fit(X.iloc[train_0], y.iloc[train_0])
+gbrt_predictions = gbrt_pipeline.predict(X.iloc[test_0])
+
+gbrt_no_weather_pipeline.fit(X_no_weather.iloc[train_0], y.iloc[train_0])
+gbrt_no_weather_predictions = gbrt_no_weather_pipeline.predict(
+  X_no_weather.iloc[test_0]
+)
+
+snaive_predictions = snaive.iloc[test_0].values</code></pre>
+<p>Those we can then use to visualize the last week of the test set:<a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a></p>
+<pre class="python"><code>last_hours = slice(-168, None)
+fig, ax = plt.subplots(figsize=(12, 4))
+fig.suptitle(&quot;Predictions by models and naive method&quot;)
+ax.plot(
+    gbrt_predictions[last_hours],
+    &quot;x-&quot;,
+    label=&quot;Gradient Boosted Trees&quot;,
+)
+ax.plot(
+    gbrt_no_weather_predictions[last_hours],
+    &quot;x-&quot;,
+    label=&quot;Gradient Boosted Trees without Weather&quot;,
+)
+ax.plot(
+    snaive_predictions[last_hours],
+    &quot;x-&quot;,
+    label=&quot;Weekly Seasonal Naive&quot;,
+)
+ax.plot(
+    y.iloc[test_0].values[last_hours],
+    &quot;x-&quot;,
+    alpha=0.5,
+    label=&quot;Actual demand&quot;,
+    color=&quot;black&quot;,
+)
+_ = ax.legend()</code></pre>
+<p><img src="/post/2022-08-30-where-is-the-seasonal-naive-benchmark_files/figure-html/predictions_test_0-1.png" /></p>
+<p>While the graph is a bit busy, the seasonal patterns are clear. While the gradient bossted trees model without the weather information underestimates the demand on most of the weekdays and isn’t able to predict the rush-hour peaks, the seasonal naive does a bit better in these respects. But it also makes larger errors on this weekend in particular, presumably due to a very different previous weekend.</p>
+<p>To compare more than just a week of predictions against actuals, we can use a scatterplot.</p>
+</div>
+<div id="graph-of-predictions-against-actuals" class="section level2">
+<h2>Graph of Predictions Against Actuals</h2>
+<p>The graph of predictions over time is great to see the actual behavior of the time series. But consistent problems can become apparent in a scatterplot of <em>all</em> predictions against realized values for the current test set. The predictions from a perfect model would fall on the diagonal line, any deviation from it is the error of the prediction.</p>
+<pre class="python"><code>fig, axes = plt.subplots(ncols=3, figsize=(12, 4), sharey=True)
+predictions = [
+    gbrt_predictions,
+    gbrt_no_weather_predictions,
+    snaive_predictions,
+]
+labels = [
+    &quot;GBT&quot;,
+    &quot;GBT without Weather&quot;,
+    &quot;Seasonal Naive&quot;,
+]
+for ax, pred, label in zip(axes, predictions, labels):
+    ax.scatter(y.iloc[test_0].values, pred, alpha=0.3, label=label)
+    ax.plot([0, 1], [0, 1], &quot;--&quot;, label=&quot;Perfect model&quot;)
+    ax.set(
+        xlim=(0, 1),
+        ylim=(0, 1),
+        xlabel=&quot;True demand&quot;,
+        ylabel=&quot;Predicted demand&quot;,
+    )
+    ax.legend()
+
+plt.show()</code></pre>
+<p><img src="/post/2022-08-30-where-is-the-seasonal-naive-benchmark_files/figure-html/true_vs_predicted_plot-1.png" /></p>
+<p>As <a href="https://scikit-learn.org/1.1/auto_examples/applications/plot_cyclical_feature_engineering.html#modeling-non-linear-feature-interactions-with-kernels">discussed in the tutorial notebook</a>, the gradient boosted trees models systematically underestimate the peak demand. For the model without weather information, this also appears to hold for the range of lower demand—similar to what is visible in the graph of demand over time above.</p>
+<p>In comparison, the seasonal naive method appears to make some errors that are larger in absolute size, but it doesn’t systematically under- or overestimate. This makes sense as its predictions adjust entirely from week to week: A <em>too large</em> prediction in one week tends to imply a <em>too low</em> prediction the week thereafter if the data is noisy around some average level. Then the seasonal naive method is low bias, high variance. A bias would easily be introduced by a strong trend that persisted over time in the series, though.</p>
+</div>
+<div class="footnotes footnotes-end-of-document">
+<hr />
+<ol>
+<li id="fn1"><p>For example, using observations from a week ago for weekends, but observations from a day ago for weekdays—to represent the difference between them. Mondays would have to count as weekends.<a href="#fnref1" class="footnote-back">↩︎</a></p></li>
+<li id="fn2"><p>The original cross validation setup predicts 42 days into the future. While the gradient boosting models don’t see the target test period, we need to assume for the current seasonal naive implementation that we only have to forecast at most 5 days into the future: We use the last week of the training period to predict the first week of the test period, and then use the first week of the test period to predict the next week of the test period. Maybe a future blog post can evaluate how well a seasonal naive model would perform if we used the last week of the train period to forecast the entire test period.<a href="#fnref2" class="footnote-back">↩︎</a></p></li>
+<li id="fn3"><p>The scikit-learn notebook showed the last four days, but I prefer to show a bit more data from an entire week period. It makes the plot more busy though.<a href="#fnref3" class="footnote-back">↩︎</a></p></li>
+</ol>
+</div>
