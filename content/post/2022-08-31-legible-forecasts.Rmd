@@ -1,0 +1,259 @@
+---
+title: Legible Forecasts, and Design for Contestability
+author: Tim Radtke
+date: '2022-08-31'
+slug: legible-forecasts
+categories: []
+tags: []
+---
+
+```{r setup, echo = FALSE, warning = FALSE, message = FALSE}
+theme_color <- "#2DCC9A"
+highlight_color <- "#EF3737"
+
+set.seed(4729)
+
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(bsts)
+library(explainer)
+```
+
+Some models are inherently interpretable because one can read their decision boundary right off them. In fact, you could call them *interpreted* as there is nothing left for you to interpret: The entire model is written out for you to read. 
+
+For example, assume it's July and we need to predict how many scoops of ice cream we'll sell next month. The [Seasonal Naive method](https://otexts.com/fpp3/simple-methods.html#seasonal-naïve-method) tells us:
+
+```
+AS 12 MONTHS AGO IN August, PREDICT sales = 3021.
+```
+
+Slightly more complicated but with rules that are fitted on past data, this is what a [Rule List](https://proceedings.mlr.press/v38/wang15a.html) could look like:
+
+```
+     IF month IS June   THEN PREDICT sales = 5000,
+ELSE IF month IS July   THEN PREDICT sales = 5900,
+ELSE IF month IS August THEN PREDICT sales = 3050,
+ELSE                         PREDICT sales = 1500.
+```
+
+The models are interpretable because their function $f_{\theta}(x)$ is human-readable. The function is put into words, literally. This makes it possible to understand why a value is predicted, and it makes it possible to disagree with a prediction. A stakeholder could challenge it:
+
+> Yes, 3050 is a good estimate, but this August we run a discount code in our podcast advertisements for the first time ever, which is not taken into account by the model. Thus we should be prepared for increased sales of up to 4000 scoops of our delicious ice cream.
+
+Users of interpretable methods can contest predictions *because* the models are legible. This is important, because methods that can be contested can also be trusted---basically every time you inspect the prediction and don't find a reason to contest. I haven't seen the terms "legible" and "contestability" mentioned a lot if at all in the usual machine learning literature around ethics, explainability, and trustworthiness. Instead a paper [by Hirsch et al. on PubMed](https://pubmed.ncbi.nlm.nih.gov/28890949/) used them to describe a machine learning system built for mental health patients and practicioners. If you want others to trust and act on your model's predictions, I think these are great characteristics to strive for.
+
+Unfortunately, compared to the examples above, structural time series models aren't legible. Or what do you call the following?
+
+$$
+y_{t} = \mu_t + \tau_t + \epsilon_t, \quad \epsilon_t \sim N(0, \sigma)
+$$
+$$
+\mu_{t+1} = \mu_t + \delta_t + \eta_{\mu,t}, \quad \eta_{\mu,t} \sim N(0, \sigma_{\mu})
+$$
+$$
+\delta_{t+1} = D + \phi(\delta_t - D) + \eta_{\delta,t}, \quad \eta_{\delta,t} \sim N(0, \sigma_{\delta})
+$$
+$$
+\tau_{t+1} = - \sum_{s=1}^{S-1} \tau_t + \eta_{\tau, t}, \quad \eta_{\tau,t} \sim N(0, \sigma_{\tau})
+$$
+
+Sure, structural time series models are interpretable. That's because they are made of a set of parameters where every parameter serves a predefined purpose. But it will take considerable effort and background knowledge to interpret not just individual parameters but all of them together to understand why the model predicts 3309 scoops of ice cream for August.
+
+What though if we could write an interpreter for the coefficients? Not an explanation model that approximates the fitted model, but a function that puts the fitted parameters into words---again, the goal is legibility.
+
+Let's give it a shot.
+
+## Fit the Model
+
+I will use the model described by the equations above for this. It's implemented in the `bsts` package in R, and corresponds to the specification with semilocal linear trend and seasonal effects.
+
+![Photo of the bike counter installation at Straße des 17. Juni in Berlin. The counts of this station are available at: https://data.eco-counter.com/public2/?id=300019043.](/post/berlin_bike_count.png)
+
+Let's fit this model against [monthly counts of bikes that passed the publicly available counter station at Maybachufer in Berlin](https://data.eco-counter.com/public2/?id=100032236); I aggregated the hourly data from the original dataset made available by the "Berlin Senatsverwaltung für Umwelt, Mobilität, Verbraucher- und Klimaschutz" [on their website](https://www.berlin.de/sen/uvk/verkehr/verkehrsplanung/radverkehr/weitere-radinfrastruktur/zaehlstellen-und-fahrradbarometer/).^[Their Excel file appears to be updated once a year which means the data for 2022 is not yet available. One can see the latest data on their [interactive map](https://data.eco-counter.com/ParcPublic/?id=4728#).] It's a smooth series of about five years history if we cut it off after June 2021 to keep a holdout year:
+
+```{r import_data, echo = FALSE, message = FALSE}
+df <- readr::read_csv("../../static/data/df_bike_count_maybachufer.csv")
+```
+
+```{r plot_data, echo = FALSE, fig.height = 3}
+ggp <- ggplot(mapping = aes(x = date)) +
+  geom_line(aes(y = n_bikes), color = "grey",
+            data = df[df$date < as.Date("2021-08-01"), ]) +
+  geom_point(aes(y = n_bikes), pch = 21, fill = "black", col = "white",
+             size = 2,
+             data = df[df$date < as.Date("2021-08-01"), ]) +
+  labs(x = "Month", y = "Bike Count") +
+  coord_cartesian(
+    ylim = c(0, 225000),
+    xlim = c(as.Date("2016-05-01"),
+             as.Date("2022-07-01"))
+  )
+
+print(ggp)
+```
+
+We construct the model by combining the semilocal linear trend with the monthly seasonality and fit it using the vector of the time series.
+
+```{r fit_model}
+y <- df[df$date < as.Date("2021-08-01"), ]$n_bikes
+
+state_spec <- bsts::AddSeasonal(
+  state.specification = list(),
+  y = y,
+  nseasons = 12
+)
+
+state_spec <- bsts::AddSemilocalLinearTrend(
+  state.specification = state_spec,
+  y = y
+)
+
+bsts_fit <- bsts::bsts(
+  formula = y, 
+  state.specification = state_spec,
+  ping = 0,
+  niter = 6000,
+  seed = 7267
+)
+```
+
+At this point we haven't called `predict()` to produce a forecast. All we have are the fitted parameters of the model hidden in the `bsts_fit` object.^[As we used Bayesian inference, we don't have *a* fitted parameter, but samples from parameters' posterior distributions derived via MCMC. I will not mention it in the rest of the article and only show the posterior median.] Let's plug them into our equation to print the model in the best form available out-of-the box:
+
+$$
+y_{t} = \mu_t + \tau_t + \epsilon_t, \quad \epsilon_t \sim N(0, 9290)
+$$
+$$
+\mu_{t+1} = \mu_t + \delta_t + \eta_{\mu,t}, \quad \eta_{\mu,t} \sim N(0, 411)
+$$
+$$
+\delta_{t+1} = -1.86 + -0.59 \cdot (\delta_t + 1.86) + \eta_{\delta,t}, \quad \eta_{\delta,t} \sim N(0, 8866)
+$$
+$$
+\tau_{t+1} = \sum_{s=1}^{11} \tau_t + \eta_{\tau, t}, \quad \eta_{\tau,t} \sim N(0, 141)
+$$
+$$
+\mu_T = 136570, \quad \delta_T = 3388
+$$
+$$
+\tau_T = 39881, \quad \sum_{s=1}^{11} \tau_{T-s+1} = 51118
+$$
+
+Well. I mean, one *can* interpret this. But would one show this as part of a user interface? Ask business stakeholders to make sense of it? Probably not. Can I type the values into a calculator and get the prediction for next month? Yes. Do I want to? No.
+
+## Make the Model Legible
+
+Let's try something different. In comparison to the numerical parameter values, a semantic representation should be much easier to parse. If there is one thing we can parse well, it's text.^[Okay, after visual representations.]
+
+The [following function](https://github.com/timradtke/explainer) generates such legible representation of the fitted model, describes how the model puts the forecast together, and summarizes miscellaneous information such as comparison against benchmarks and detected anomalies.
+
+Note that the paragraphs up to the horizontal divider below are automatically generated text returned by the function, based on the specifics of the model it received as input.
+
+```{r bsts_interpreted, results = "asis"}
+# devtools::install_github("timradtke/explainer")
+
+explanation <- explainer::explain(
+  object = bsts_fit,
+  burn = 1000,
+  seasonality = 12,
+  start_period = 5
+)
+print(explanation)
+```
+
+***
+
+This model representation isn't as succinct as the set of equations. But you can read it from top to bottom. There's no need to jump back and forth to grasp the size of the seasonal effect. It describes the characteristics of the fitted structural time series model without asking the reader to know what a structural time series model is. By doing so, it makes the model legible (literally), and contestable: For example, the model does not project a long-term trend (even though the model family allows for it). Given subject matter expertise, this could be challenged. Maybe 2020 and 2021 are unusual for some reason, and the upward behavior of the years prior will eventually continue.
+
+What's hidden in the function definition of `explainer()`, is that this interpretation relies on arbitrary thresholds. I purposely avoided printing any numbers to indicate the strength of model components. Consequently, it's not left to the reader to determine whether the model shows a long term trend, whether the level is expected to increase, and which source of uncertainty is the strongest. It's based on predefined cutoffs.
+
+However, this allows us to play a bit with the information that is provided by the model object. Instead of purely interpreting the model parameters, one can expose how the model's training (!) error compares to simple benchmarks like the seasonal naive method. If it compared unfavorably, this would presumably indicate that the model should not be relied upon. Similarly, the in-sample errors are used to identify potentially anomalous observations.^[See also the documentation of `bsts::bsts.prediction.errrors()`.] Given the smooth bike counts, this isn't as relevant here. But it could be valuable information to the user if a recent observation was unexpectedly large.
+
+## The Forecast
+
+Finally, to complete the picture: The corresponding forecast looks as follows.
+
+```{r, echo = FALSE}
+bsts_pred <- predict(bsts_fit, horizon = 12, burn = 1000)
+
+df_pred <- data.frame(
+  date = rep(seq(as.Date("2021-08-01"), as.Date("2022-07-01"), 
+                 by = "month"), each = 5000),
+  path = rep(1:5000, 12),
+  forecast = as.numeric(bsts_pred$distribution)
+)
+
+df_pred_quantiles <- df_pred %>%
+  dplyr::group_by(date) %>%
+  dplyr::summarize(
+    q_005_12 = quantile(forecast, 0.5 / 12),
+    q_010_12 = quantile(forecast, 1 / 12),
+    q_015_12 = quantile(forecast, 1.5 / 12),
+    q_030_12 = quantile(forecast, 3 / 12),
+    q_060_12 = quantile(forecast, 6 / 12),
+    q_090_12 = quantile(forecast, 9 / 12),
+    q_105_12 = quantile(forecast, 10.5 / 12),
+    q_110_12 = quantile(forecast, 11 / 12),
+    q_115_12 = quantile(forecast, 11.5 / 12)
+  )
+```
+
+```{r plot_forecast, echo = FALSE, fig.height = 3}
+ggp +
+  geom_ribbon(aes(ymin = q_005_12, ymax = q_115_12), 
+              alpha = 3/12, fill = theme_color,
+              data = df_pred_quantiles) +
+  geom_ribbon(aes(ymin = q_015_12, ymax = q_105_12), 
+              alpha = 5/12, fill = theme_color,
+              data = df_pred_quantiles) +
+  geom_ribbon(aes(ymin = q_030_12, ymax = q_090_12), 
+              alpha = 7/12, fill = theme_color,
+              data = df_pred_quantiles) +
+  geom_point(aes(y = n_bikes),
+             data = df[explanation$anomalies$anomalies, ],
+             pch = 21, col = highlight_color, size = 3) +
+  labs(caption = "Anomaly identified by `explainer()` is highlighted in red.")
+```
+
+```{r extract_params_from_bsts, echo = FALSE, eval = FALSE}
+# This is how the parameter values shown in the equations above
+# were extracted from the fitted BSTS model.
+
+# \sigma
+median(bsts_fit$sigma.obs[-(1:1000)])
+
+# \sigma_{\tau}
+median(bsts_fit$sigma.seasonal.12[-(1:1000)])
+
+# \sigma_{\mu}
+median(bsts_fit$trend.level.sd[-(1:1000)])
+
+# D
+median(bsts_fit$trend.slope.mean[-(1:1000)])
+
+# \phi
+median(bsts_fit$trend.slope.ar.coefficient[-(1:1000)])
+
+# \sigma_{\delta}
+median(bsts_fit$trend.slope.sd[-(1:1000)])
+
+# \tau_{T}
+median(bsts_fit$final.state[-(1:1000), 1])
+
+# \sum_{s=1}^11 \tau_{T-s+1}
+median(apply(bsts_fit$final.state[-(1:1000), 1:11], 1, sum))
+
+# \mu_{T}
+median(bsts_fit$final.state[-(1:1000), 12])
+
+# \delta_{T}
+median(bsts_fit$final.state[-(1:1000), 13])
+```
+
+## References
+
+Tad Hirsch, Kritzia Merced, Shrikanth Narayanan, Zac E. Imel, David C. Atkins (2017). [Designing Contestability: Interaction Design, Machine Learning, and Mental Health](https://pubmed.ncbi.nlm.nih.gov/28890949/). DIS (Des Interact Syst Conf).
+
+Fulton Wang, Cynthia Rudin (2015). [Falling Rule Lists](https://proceedings.mlr.press/v38/wang15a.html). Proceedings of the Eighteenth International Conference on Artificial Intelligence and Statistics.
+
+Berlin Senatsverwaltung für Umwelt, Mobilität, Verbraucher- und Klimaschutz. [Ergebnisse der automatischen Radzählstellen (Jahresdatei)](https://www.berlin.de/sen/uvk/_assets/verkehr/verkehrsplanung/radverkehr/weitere-radinfrastruktur/zaehlstellen-und-fahrradbarometer/gesamtdatei_stundenwerte.xlsx). 2021-12-31. [Data licence Germany – attribution – version 2.0](https://www.govdata.de/dl-de/by-2-0).
