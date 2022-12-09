@@ -1,0 +1,42 @@
+---
+title: ChatGPT and ML Product Management
+author: Tim Radtke
+date: '2022-12-09'
+slug: chatgpt-and-product-management
+categories:
+  - Data Science
+tags:
+  - product
+  - UI
+---
+
+
+
+<p>Huh, look at that, OpenAI’s <a href="https://openai.com/blog/chatgpt/">ChatGPT</a> portrays absolute confidence while giving plain wrong answers. But ChatGPT also <em>does provide</em> helpful responses a large number of times. So one kind of does want to use it. Sounds an awful lot like every other machine learning model deployed in 2022.</p>
+<p>But really, how do we turn fallible machine learning models into products to be used by humans?</p>
+<p>Not by injecting its answers straight <a href="https://stackoverflow.com/help/gpt-policy">into StackOverflow</a>. Its mistakes put too much of a strain onto a system designed to receive answers from self-editing humans.</p>
+<p>Hillel Wayne <a href="https://twitter.com/hillelogram/status/1600529771888136204">proposes</a> a more understated approach in his excellent <a href="https://buttondown.email/hillelwayne/archive/making-chatgpt-useful/">newsletter</a>:</p>
+<blockquote>
+<p>tl;dr: use it to generate solutions that are hard for humans to find, easy to verify, and easy to correct.</p>
+</blockquote>
+<p>While this is Hillel’s three-point plan to make ChatGPT useful to programmers, it’s also sound product management advice for a broad range of machine learning-based products. Let’s dissect this a bit.</p>
+<div id="predictions-that-are-hard-to-find" class="section level2">
+<h2>1) Predictions That Are Hard to Find</h2>
+<p>There are two dimensions to this: a single question / task / observation’s difficulty, and the difficulty of scaling to answer millions of questions. Machine learning comes in handy when it takes a human a long time to process a case, or when a lot of information need to be brought together from different sources before a decision can be made. Also, machine learning is great at looking at <em>all</em> cases and returning a prioritized list—whether that’s products that need to be reordered in a business context, or the feed of videos on the YouTube homepage. The human can then “verify the answers” for the most relevant cases first.</p>
+<p>Which brings us to the next point.</p>
+</div>
+<div id="predictions-that-are-easy-to-verify" class="section level2">
+<h2>2) Predictions That Are Easy to Verify</h2>
+<p>Unless the human consuming the model prediction is willing to do so blindly (do you always watch whatever YouTube recommends next?), a machine learning product needs to provide sufficient context to let the human make a decision on whether or not to trust the prediction.</p>
+<p>I can decide whether or not to watch the next recommended video based on its title and thumbnail; I don’t have to first watch the video to verify that the recommendation suits me. It also allows me to discard poor recommendations with ease. The context is an entirely natural part of the product and arguably core to it, more so than the selection via the model.</p>
+<p>An internal business application can be surprisingly similar. For example, when listing forecasts and reorder suggestions that are manually approved, historical sales and current inventory data make a sanity check straightforward.</p>
+<p>This kind of context based on facts (in the broadest sense of the word) is faster to parse and easier to trust than “model explanations” which themselves would need to be verified by the human.</p>
+<p>Context is something that ChatGPT is missing entirely. ChatGPT offers no sources, no citations. There are only the prompt and the prediction. This puts it into stark contrast to the context offered by the citation in Google’s Featured Snippets, or by votes and comments on StackOverflow answers.</p>
+</div>
+<div id="predictions-that-are-easy-to-correct" class="section level2">
+<h2>3) Predictions That Are Easy to Correct</h2>
+<p>When the model fails and the user needs to correct its output is when the product needs to become more than just an API, you need to <a href="https://pair.withgoogle.com/chapter/feedback-controls/#section3">provide a path forward</a>. Similarly, when augmenting a process you want users to be able to use your product as a tool. That’s only feasible if they are enabled to take its output and <a href="https://pair.withgoogle.com/chapter/feedback-controls/#section3">take it a step further</a>.</p>
+<p>The danger zone are <a href="https://www.marketwatch.com/story/zillow-to-stop-flipping-homes-for-good-as-it-stands-to-lose-more-than-550-million-will-lay-off-a-quarter-of-staff-11635885027">high-stakes situations in which a human can’t judge the model’s recommendation, and can’t do the task without the model’s recommendation</a> due to the task’s complexity. Don’t make people put their rubber-stamp on an API. Provide them with a tool that augments their capabilities.</p>
+<hr />
+<p>As ChatGPT is provided as essentially a raw API with some CSS, it demonstrates why a product needs to be more than just a model’s prediction to be trustworthy and effective. Let’s take the API and <a href="https://minimizeregret.com/post/2021/10/03/on-google-maps-directions/">build more products</a> around it.</p>
+</div>
