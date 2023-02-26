@@ -2,7 +2,7 @@
 title: Home
 ---
 
-Hi there! This is the blog of Tim Radtke, a data scientist working in Berlin. I write about things that I've learned recently--which are mostly data related. Find out more about me and the blog [here](/about/). Or look for [all posts](/post/) or [all notes](/note/).
+Minimize Regret is a blog about forecasting, optimization, and building tools humans use to make decisions under uncertainty. Tim is a data scientist in Berlin. Enjoy.
 
 #### Read this first:
 
