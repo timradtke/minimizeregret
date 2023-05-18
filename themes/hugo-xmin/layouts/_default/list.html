@@ -10,9 +10,12 @@
 <article>
 
 <style>
-main ul { list-style:none; margin:0; padding: 0;}
-main li { padding-left: 5.5em; }
-main ul span { color:slategray;width:5.5em;margin-left:-5.5em;display:inline-block;}
+.perma { color: rgb(248,179,48); text-decoration: none; }
+.continuereading { color: rgb(43,123,83); }
+main ul { list-style:none; margin:0; padding: 0; }
+main ul span { margin-left:0em;display:inline-block; }
+main ul span .date { color:#999;width:5.5em;display:inline-block; }
+main li { padding-left: 0em; }
 </style>
 
 <ul>
@@ -21,29 +24,40 @@ main ul span { color:slategray;width:5.5em;margin-left:-5.5em;display:inline-blo
     {{ range (where $pages "Section" "!=" "") }}
     {{ if eq .Dir "linked/" }}
       <li>
-        <span class="date">{{ .Date.Format "2006/01/02" }}</span>
-        <a href="{{ .LinkTitle | safeURL }}">{{ .Title | markdownify }}</a> 
-        <a href="{{ .RelPermalink }}" title="Permanent Link to '{{ .Title }}'">&#8734;</a>
+        <span>
+          <span class="date">{{ .Date.Format "2006/01/02" }}</span>
+          <br>
+          <a href="{{ .LinkTitle | safeURL }}">{{ .Title | markdownify }}</a> 
+          <a class="perma" href="{{ .RelPermalink }}" title="Permanent Link to '{{ .Title }}'">&#8734;</a>
+        </span>
       </li>
       <p>{{ .Content | safeHTML }}</p>
     {{ end }}
     
     {{ if eq .Dir "note/" }}
       <li>
-        <span class="date">{{ .Date.Format "2006/01/02" }}</span>
-        <a href="{{ .RelPermalink }}">{{ .Title | markdownify }}</a>
+        <span>
+          <span class="date">{{ .Date.Format "2006/01/02" }}</span>
+          <br>
+          <a href="{{ .RelPermalink }}">{{ .Title | markdownify }}</a>
+        </span>
       </li>
       <p>{{ .Content | safeHTML }}</p>
     {{ end }}
     
     {{ if eq .Dir "post/" }}
       <li>
-        <span class="date">{{ .Date.Format "2006/01/02" }}</span>
-        <a href="{{ .RelPermalink }}">{{ .Title | markdownify }}</a>
+        <span>
+          <span class="date">{{ .Date.Format "2006/01/02" }}</span>
+          <br>
+          <a href="{{ .RelPermalink }}">{{ .Title | markdownify }}</a>
+        </span>
       </li>
       <p>{{ .Summary }}</p>
       {{ if .Truncated }}
-        <p><a href="{{ .RelPermalink | relURL }}">Continue reading?</a></p>
+      <p>
+        <a class="continuereading" href="{{ .RelPermalink | relURL }}">Continue reading?</a>
+      </p>
       {{ end }}
     {{ end }}
     <hr/>
