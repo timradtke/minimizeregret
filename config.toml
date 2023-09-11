@@ -32,12 +32,12 @@ enableEmoji = true
     url = "/paper-stack/"
     weight = 4
 [[menu.main]]
-    name = "Twitter"
-    url = "https://www.twitter.com/timradtke"
+    name = "Mastodon"
+    url = "https://bayes.club/@timradtke"
     weight = 5
 
 [params]
     author = "Tim Radtke"
     dateFormat = "2006-01-02"
     description = "Minimize Regret is a blog written by Tim Radtke about data science and machine learning."
-    footer = "&copy; Tim Radtke 2020 | [Github](https://www.github.com/timradtke) | [Twitter](https://www.twitter.com/timradtke)"
+    footer = "&copy; Tim Radtke 2020 | [Github](https://www.github.com/timradtke) | [Mastodon](https://bayes.club/@timradtke)"

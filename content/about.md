@@ -10,4 +10,4 @@ I recently finished my master’s in statistics and graduated with honors. My th
 
 Before joining [Bayer](https://www.bayer.com) as a data scientist in November 2018, I worked as data scientist for the online shop [Amorelie](https://amorelie.de) (NSFW, I suppose). At Amorelie, I was responsible for the automated forecast and optimal replenishment of thousands of products, and introduced novel ways of attributing TV marketing cost.
 
-Send me an email to `tim@timradtke.net` in case you have any question. Else, try [Twitter](https://www.twitter.com/timradtke) or [Linkedin](https://www.linkedin.com/in/timradtke). Or even better, meet me at the next [Berlin Machine Learning](https://www.meetup.com/berlin-machine-learning/)  or [Stan User Group](https://www.meetup.com/Stan-User-Group-Berlin/) meetup.
+Send me an email to `tim@timradtke.net` in case you have any question. Else, try [Mastodon](https://bayes.club/@timradtke) or [Linkedin](https://www.linkedin.com/in/timradtke). Or even better, meet me at the next [Berlin Machine Learning](https://www.meetup.com/berlin-machine-learning/)  or [Stan User Group](https://www.meetup.com/Stan-User-Group-Berlin/) meetup.
