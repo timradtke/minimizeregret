@@ -28,13 +28,9 @@ enableEmoji = true
     url = "/post/"
     weight = 3
 [[menu.main]]
-    name = "Paper Stack"
-    url = "/paper-stack/"
-    weight = 4
-[[menu.main]]
     name = "Mastodon"
     url = "https://bayes.club/@timradtke"
-    weight = 5
+    weight = 4
 
 [params]
     author = "Tim Radtke"
