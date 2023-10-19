@@ -1,0 +1,122 @@
+---
+title: A Flexible Model Family of Simple Forecast Methods
+author: Tim Radtke
+date: '2023-10-19'
+slug: threedx
+categories: []
+tags: []
+---
+
+
+
+<p><em>Introducing a flexible model family that interpolates between simple forecast methods to produce interpretable probabilistic forecasts of seasonal data by weighting past observations.</em></p>
+<p>In business forecasting applications for <a href="https://forecasters.org/wp-content/uploads/gravity_forms/7-c6dd08fee7f0065037affb5b74fec20a/2017/07/Januschowski_Tim_ISF2017.pdf">operational decisions</a>, simple approaches are hard-to-beat and provide robust expectations that can be relied upon for short- to medium-term decisions. They’re often better at recovering from structural breaks or modeling seasonal peaks than more complicated models, and they don’t overfit unrealistic trends.</p>
+<p>If that wasn’t enough, they’re interpretable. Not just explainable, but <a href="https://arxiv.org/abs/1811.10154">interpretable</a>.</p>
+<p>Still, when faced with thousands or millions of time series, not all of them will be modeled best by the naive method, nor will all be modeled best by the seasonal mean. You’d still like to pick a method that fits the series. Similarly, the all-or-nothing nature of approaches such as the seasonal naive method can be a bit black-or-white. A bit more smoothness and impact from multiple past observations can be helpful as long as we don’t compromise in robustness.</p>
+<div id="assigning-weights-over-time" class="section level2">
+<h2>Assigning Weights Over Time</h2>
+<p>A bit more smoothness is what <a href="https://otexts.com/fpp3/ses.html">simple exponential smoothing</a> offers for the mean and naive forecast methods: As you vary the single <span class="math inline">\(\alpha\)</span> parameter between 0 and 1, simple exponential smoothing will move from the mean forecast to the naive forecast, in between assigning exponentially decreasing weights to past observations. The prediction becomes the weighted average of the past observations. The mean forecast uses the same weight for all observations, whereas the naive method assigns all weight to the most recent observation.</p>
+<div class="float">
+<img src="/post/2023-10-19-threedx_img/threedx_mean_ses_naive.png" alt="While the mean forecast assigns the same weight to all observations and the naive method assigns all weight to the last observation, Simple Exponential Smoothing interpolates between the two by assigning exponentially decaying weights to past observations." />
+<div class="figcaption">While the mean forecast assigns the same weight to all observations and the naive method assigns all weight to the last observation, Simple Exponential Smoothing interpolates between the two by assigning exponentially decaying weights to past observations.</div>
+</div>
+<p>In many applications, however, using only simple exponential smoothing could never suffice. A seasonal component in monthly or daily data is often the main signal that needs to be modeled and projected into the future. Not only are more recent observations more representative of the future, but so are observations that are close in the seasonal period: October 2023 is going to be more similar to September 2022 than to May 2023. Wednesday is more similar to Wednesday last week than to Monday.</p>
+<p>This motivates two more ways of weighting past observations.</p>
+</div>
+<div id="assigning-weights-within-and-across-seasonal-periods" class="section level2">
+<h2>Assigning Weights Within and Across Seasonal Periods</h2>
+<p>First, observations can be weighted <em>within</em> a seasonal period. Due to seasonality, the observation exactly a year ago or exactly a week ago should get a larger weight than the observation 11 months ago or two days ago.</p>
+<p>Second, observations can be weighted <em>across</em> seasonal periods, assigning more weight to the most recent period than to the period before that and the one before that.</p>
+<p>As before, exponential weights make for a useful weighting structure. When assigning weights <em>within</em> a period, each period gets the same weight. When assigning weights <em>across</em> periods, each observation within a period gets the same weight.</p>
+<div class="float">
+<img src="/post/2023-10-19-threedx_img/threedx_across_within.png" alt="The within-period and across-period weighting schemes apply exponential weights, similar to Simple Exponential Smoothing, to model a time series’ seasonal component." />
+<div class="figcaption">The <em>within</em>-period and <em>across</em>-period weighting schemes apply exponential weights, similar to Simple Exponential Smoothing, to model a time series’ seasonal component.</div>
+</div>
+<p>Note how both the <em>within</em> and the <em>across</em> period weighting schemes are each controlled by a single parameter if we give them a similar functional form as used in simple exponential smoothing. The picture above illustrates this by using the familiar <span class="math inline">\(\alpha (1 - \alpha)^t\)</span> notation.</p>
+<p>As we vary the parameter from 0 to 1 for <em>within</em>-period weights, the same weight will be assigned to all observations in the period, then shifts away from observations that are currently in the middle of the period towards the edges, until all weight is assigned to the observation that’s in the same step of the period as the future observation.</p>
+<p>For <em>across</em>-period weights, at first the same weight will be assigned to all periods, to then be exponentially decreased for past periods, until all weight will be assigned to just the most recent period.</p>
+</div>
+<div id="assigning-weights-over-time-and-seasonal-periods" class="section level2">
+<h2>Assigning Weights Over Time and Seasonal Periods</h2>
+<p>At this point we have three ways of assigning weights to past observations to move smoothly between forecast methods, namely using</p>
+<ul>
+<li>exponential weights that decrease over time controlled by a parameter <span class="math inline">\(\alpha\)</span></li>
+<li>seasonal within-period exponential weights controlled by a parameter <span class="math inline">\(\alpha_s\)</span>, and</li>
+<li>seasonal across-period exponential weights controlled by a parameter <span class="math inline">\(\alpha_{sd}\)</span>.</li>
+</ul>
+<p>Combining all three weighting schemes through multiplication<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a> provides a powerful weight structure that depends on only three parameters and captures most signal sources in time series of operational business applications.</p>
+<p>The picture below illustrates the complex weight pattern that this combination can achieve, smoothly assigning weights to observations close in season and time, and then decreasing from there.</p>
+<div class="float">
+<img src="/post/2023-10-19-threedx_img/threedx_product.png" alt="Achieve general weight patterns that fit various kinds of time series by combining all three exponential weight schemes through multiplication and subsequent re-standardization." />
+<div class="figcaption">Achieve general weight patterns that fit various kinds of time series by combining all three exponential weight schemes through multiplication and subsequent re-standardization.</div>
+</div>
+<p>This three-dimensional exponential weighting structure captures the most important simple forecast methods as special cases. To make precise which set of parameters leads to which special case, let’s define a specific set of weights by the triplet <span class="math inline">\((\alpha, \alpha_{s}, \alpha_{sd})\)</span>.</p>
+<p>Then, taking the average of weighted observations recovers</p>
+<ul>
+<li>the Naive method when all weight is assigned to the most recent observation <span class="math inline">\((1, 0, 0)\)</span></li>
+<li>the Mean method when equal weight is assigned to all observations <span class="math inline">\((0, 0, 0)\)</span>,</li>
+</ul>
+<p>but due to the additional seasonal structures it now also recovers</p>
+<ul>
+<li>the Seasonal Naive method when all weight is assigned to the observation a year ago <span class="math inline">\((0, 1, 1)\)</span></li>
+<li>the Seasonal Mean method when equal weight is assigned to only the same months in the past <span class="math inline">\((0, 1, 0)\)</span></li>
+<li>the Latest Period Mean method when equal weight is assigned to only observations from the twelve most recent months <span class="math inline">\((0, 0, 1)\)</span>.</li>
+</ul>
+<p>The three latter cases are illustrated below.</p>
+<div class="float">
+<img src="/post/2023-10-19-threedx_img/threedx_seasonal_special_cases.png" alt="The seasonal naive method, the seasonal mean method, and the latest period mean method are additional special cases of the general model family that are found at the edge of the parameter space." />
+<div class="figcaption">The seasonal naive method, the seasonal mean method, and the latest period mean method are additional special cases of the general model family that are found at the edge of the parameter space.</div>
+</div>
+</div>
+<div id="characteristics-of-the-model-family" class="section level2">
+<h2>Characteristics of the Model Family</h2>
+<p>What’s neat about this generalization of simple forecast methods is how the models built from the three parameter structure maintain the advantages of the simple methods that are found at the edges of the parameter space.</p>
+<p>The reason for this is that we only apply weights to past observations in order to derive weighted average predictions.</p>
+<p>For one, this implies that the models are robust in that they won’t predict outside the observed range of observations. In fact, you can think of them as regularized, stationary infinite-order AR models. While this is limiting when time series have sustained trends as their dominating signal, it also means that models won’t project a trend into the future by mistake. Depending on your data and the level of automation, this can be preferable.<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a></p>
+<p>For another, any model in this family of models is perfectly interpretable. In fact, all you need to understand how a prediction is formed is to look at the weights allocated to past observations. It doesn’t get more interpretable than that. Even ETS models are hard to understand in comparison: Which observations made us predict that trend into the future again?</p>
+<p>Finally, the three-dimensional exponential weights structure enables a range of possible adaptations.</p>
+<p>For example, instead of creating probabilistic sample paths from a parametric distribution fitted to residuals (as is usual for the simple forecast methods mentioned before, as well as ARIMA and ETS, but also DeepAR in a sense), sample paths can also be drawn as a non-parametric bootstrap from the weighted observations, which can be helpful for intermittent and low-count data. This has been described in Gasthaus (2016) and <a href="https://arxiv.org/abs/1906.05264">Alexandrov et al. (2019)</a> for the Non-Parametric Time Series Forecaster (NPTS) that is also <a href="https://docs.aws.amazon.com/forecast/latest/dg/aws-forecast-recipe-npts.html">available in AWS Forecast</a> and <a href="https://ts.gluon.ai/stable/api/gluonts/gluonts.model.npts.html">GluonTS</a>. In fact, the NPTS model can be described by the <span class="math inline">\((\alpha, 0, 0)\)</span> and <span class="math inline">\((0, 1, \alpha)\)</span> model specifications, depending on whether the non-seasonal or seasonal version is used.</p>
+<p>Also, due to the parameter space’s simplicity, even brute force evaluation of parameter combinations is feasible to fit models. While a bit slower, it allows the use of <em>any</em> kind of loss function when fitting the model.</p>
+</div>
+<div id="implementation-of-the-model-family-in-threedx" class="section level2">
+<h2>Implementation of the Model Family in <code>threedx</code></h2>
+<p>Have a look at the <a href="https://github.com/timradtke/threedx"><code>threedx</code> repository</a> for an implementation and check out the <a href="https://timradtke.github.io/threedx">corresponding website</a> for more details and examples of how this model family based on weighting past observations can be used to forecast time series.</p>
+<pre class="r"><code>library(threedx)
+
+y &lt;- rpois(n = 55, lambda = pmax(0.1, 1 + 10 * sinpi(6:59 / 6)))
+
+model &lt;- threedx::learn_weights(
+  y = y,
+  period_length = 12L,
+  alphas_grid = threedx::list_sampled_alphas(
+    n_target = 1000L,
+    include_edge_cases = TRUE
+  ),
+  loss_function = loss_mae
+)
+
+forecast &lt;- predict(
+  object = model,
+  horizon = 12L,
+  n_samples = 2500L,
+  observation_driven = TRUE
+)
+
+autoplot(forecast)</code></pre>
+<p><img src="/post/2023-10-19-threedx_files/figure-html/threedx_example_forecast-1.png" width="672" /></p>
+</div>
+<div id="references" class="section level2">
+<h2>References</h2>
+<p>Alexander Alexandrov, Konstantinos Benidis, Michael Bohlke-Schneider, Valentin Flunkert, Jan Gasthaus, Tim Januschowski, Danielle C. Maddix, Syama Rangapuram, David Salinas, Jasper Schulz, Lorenzo Stella, Ali Caner Türkmen, Yuyang Wang (2019). <em>GluonTS: Probabilistic Time Series Models in Python</em>. <a href="https://arxiv.org/abs/1906.05264" class="uri">https://arxiv.org/abs/1906.05264</a></p>
+<p>Jan Gasthaus (2016). <em>Non-parametric time series forecaster</em>. Technical report, Amazon, 2016.</p>
+<p>Rob J. Hyndman, Anne B. Koehler, Ralph D. Snyder, and Simone Grose (2002). <em>A State Space Framework for Automatic Forecasting using Exponential Smoothing Methods</em>. <a href="https://doi.org/10.1016/S0169-2070(01)00110-8" class="uri">https://doi.org/10.1016/S0169-2070(01)00110-8</a></p>
+<p>Vincent Warmerdam (2018). <em>Winning with Simple, even Linear, Models</em>. PyData London 2018. <a href="https://youtu.be/68ABAU_V8qI?feature=shared&amp;t=286" class="uri">https://youtu.be/68ABAU_V8qI?feature=shared&amp;t=286</a></p>
+<p>P. R. Winters (1960). <em>Forecasting Sales by Exponentially Weighted Moving Averages</em>. <a href="https://doi.org/10.1287/mnsc.6.3.324" class="uri">https://doi.org/10.1287/mnsc.6.3.324</a></p>
+</div>
+<div class="footnotes footnotes-end-of-document">
+<hr />
+<ol>
+<li id="fn1"><p>And, of course, subsequent standardization so they continue to sum to 1.<a href="#fnref1" class="footnote-back">↩︎</a></p></li>
+<li id="fn2"><p>Additionally, there is always a possibility to project a bias in residuals created through a trend into the future when generating the forecast sample paths, as illustrated <a href="https://timradtke.github.io/threedx/articles/forecasting_trends.html">in this vignette</a>.<a href="#fnref2" class="footnote-back">↩︎</a></p></li>
+</ol>
+</div>
