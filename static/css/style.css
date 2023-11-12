@@ -172,11 +172,20 @@ thead, tfoot, tr:nth-child(even) {
   color: #777;
 }
 
-.figcaption {
-  font-size: 13px;
-  color: #777;
+.footnote-ref {
+  font-size: 10px;
+  text-decoration: none;
 }
 
 .footnote-back {
-    padding-left: 0.3rem;
+  padding-left: 0.3rem;
+}
+
+.footnote-backref {
+  text-decoration: none;
+}
+
+.figcaption {
+  font-size: 13px;
+  color: #777;
 }
