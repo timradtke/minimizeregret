@@ -12,47 +12,46 @@
 <style>
 .perma { color: rgb(248,179,48); text-decoration: none; }
 .continuereading { color: rgb(43,123,83); }
-main ul { list-style:none; margin:0; padding: 0; }
-main ul span { margin-left:0em;display:inline-block; }
-main ul span .date { color:#999;width:5.5em;display:inline-block; }
-main li { padding-left: 0em; }
+main { list-style:none; margin:0; padding: 0; }
+main span { margin-left:0em;display:inline-block; }
+main span .date { color:#999;width:5.5em;display:inline-block; }
+main p { padding-left: 0em; }
 </style>
 
-<ul>
   {{ $pages := .Pages }}
   {{ if .IsHome }}{{ $pages = .Site.RegularPages }}{{ end }}
     {{ range (where $pages "Section" "!=" "") }}
     {{ if eq .Dir "linked/" }}
-      <li>
+      <p>
         <span>
           <span class="date">{{ .Date.Format "2006/01/02" }}</span>
           <br>
           <a href="{{ .LinkTitle | safeURL }}">{{ .Title | markdownify }}</a> 
           <a class="perma" href="{{ .RelPermalink }}" title="Permanent Link to '{{ .Title }}'">&#8734;</a>
         </span>
-      </li>
+      </p>
       <p>{{ .Content | safeHTML }}</p>
     {{ end }}
     
     {{ if eq .Dir "note/" }}
-      <li>
+      <p>
         <span>
           <span class="date">{{ .Date.Format "2006/01/02" }}</span>
           <br>
           <a href="{{ .RelPermalink }}">{{ .Title | markdownify }}</a>
         </span>
-      </li>
+      </p>
       <p>{{ .Content | safeHTML }}</p>
     {{ end }}
     
     {{ if eq .Dir "post/" }}
-      <li>
+      <p>
         <span>
           <span class="date">{{ .Date.Format "2006/01/02" }}</span>
           <br>
           <a href="{{ .RelPermalink }}">{{ .Title | markdownify }}</a>
         </span>
-      </li>
+      </p>
       <p>{{ .Summary }}</p>
       {{ if .Truncated }}
       <p>
@@ -62,7 +61,6 @@ main li { padding-left: 0em; }
     {{ end }}
     <hr/>
   {{ end }}
-</ul>
 
 </article>
 </main>
