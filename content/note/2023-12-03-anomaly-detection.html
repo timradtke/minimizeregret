@@ -1,0 +1,103 @@
+---
+title: Comes with Anomaly Detection Included
+author: Tim Radtke
+date: '2023-12-03'
+slug: anomaly-detection-included
+categories: []
+tags: []
+---
+
+
+
+<p>A powerful pattern in forecasting is that of model-based anomaly detection <em>during</em> model training. It exploits the inherently iterative nature of forecasting models and goes something like this:</p>
+<ol style="list-style-type: decimal">
+<li>Train your model up to time step <code>t</code> based on data <code>[1,t-1]</code></li>
+<li>Predict the forecast distibution at time step <code>t</code></li>
+<li>Compare the observed value against the predicted distribution at step <code>t</code>; flag the observation as anomaly if it is in the very tail of the distribution</li>
+<li>Don’t update the model’s state based on the anomalous observation</li>
+</ol>
+<p>For another description of this idea, see, for example, <a href="https://arxiv.org/abs/1906.05264">Alexandrov et al. (2019)</a>.</p>
+<p>Importantly, you use your model to detect anomalies <em>during</em> training and not <em>after</em> training, thereby ensuring its state and forecast distribution are not corrupted by the anomalies.</p>
+<p>The beauty of this approach is that</p>
+<ul>
+<li>the forecast distribution can properly reflect the impact of anomalies, and</li>
+<li>you don’t require a separate anomaly detection method with failure modes different from your model’s.</li>
+</ul>
+<p>In contrast, standalone anomaly detection approaches would first have to solve the handling of trends and seasonalities themselves, too, before they could begin to detect any anomalous observation. So why not use the model you already trust with predicting your data to identify observations that don’t make sense to it?</p>
+<p>This approach can be expensive if your model doesn’t train iteratively over observations in the first place. Many forecasting models<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a> do, however, making this a fairly negligiable addition.</p>
+<p>But enough introduction, let’s see it in action. First, I construct a simple time series <code>y</code> of monthly observations with yearly seasonality.</p>
+<pre class="r"><code>set.seed(472)
+x &lt;- 1:80
+y &lt;- pmax(0, sinpi(x / 6) * 25 + sqrt(x) * 10 + rnorm(n = 80, sd = 10))
+
+# Insert anomalous observations that need to be detected
+y[c(55, 56, 70)] &lt;- 3 * y[c(55, 56, 70)]</code></pre>
+<p>To illustrate the method, I’m going to use a simple probabilistic variant of the Seasonal Naive method where the forecast distribution is assumed to be Normal with zero mean. Only the <span class="math inline">\(\sigma\)</span> parameter needs to be fitted, which I do using the standard deviation of the forecast residuals.</p>
+<p>The estimation of the <span class="math inline">\(\sigma\)</span> parameter occurs in lockstep with the detection of anomalies. Let’s first define a data frame that holds the observations and will store a cleaned version of the observations, the fitted <span class="math inline">\(\sigma\)</span> and detected anomalies…</p>
+<pre class="r"><code>df &lt;- data.frame(
+  y = y,
+  y_cleaned = y,
+  forecast = NA_real_,
+  residual = NA_real_,
+  sigma = NA_real_,
+  is_anomaly = FALSE
+)</code></pre>
+<p>… and then let’s loop over the observations.</p>
+<p>At each iteration, I first predict the current observation given the past and update the forecast distribution by calculating the standard deviation over all residuals that are available so far, before calculating the latest residual.</p>
+<p>If the latest residual is in the tails of the current forecast distribution (i.e., larger than multiples of the standard deviation), the observation is flagged as anomalous.</p>
+<p>For time steps with anomalous observations, I update the cleaned time series with the forecasted value (which informs a later forecast at step <code>t+12</code>) and set the residual to missing to keep the anomalous observation from distorting the forecast distribution.</p>
+<pre class="r"><code># Loop starts when first prediction from Seasonal Naive is possible
+for (t in 13:nrow(df)) {
+  df$forecast[t] &lt;- df$y_cleaned[t - 12]
+  df$sigma[t] &lt;- sd(df$residual, na.rm = TRUE)
+  df$residual[t] &lt;- df$y[t] - df$forecast[t]
+  
+  if (t &gt; 25) {
+    # Collect 12 residuals before starting anomaly detection
+    df$is_anomaly[t] &lt;- abs(df$residual[t]) &gt; 3 * df$sigma[t]
+  }
+  
+  if (df$is_anomaly[t]) {
+    df$y_cleaned[t] &lt;- df$forecast[t]
+    df$residual[t] &lt;- NA_real_
+  }
+}</code></pre>
+<p>Note that I decide to start the anomaly detection not before there are 12 residuals for one full seasonal period, as the <span class="math inline">\(\sigma\)</span> estimate based on less than a handful of observations can be flaky.</p>
+<p>In a plot of the results, the combination of 1-step-ahead prediction and forecast distribution is used to distinguish between expected and anomalous observations, with the decision boundary indicated by the orange ribbon. At time steps where the observed value falls outside the ribbon, the orange line indicates the model prediction that is used to inform the model’s state going forward in place of the anomaly.</p>
+<p><img src="/note/2023-12-03-anomaly-detection_files/figure-html/plot_anomaly_detection-1.png" width="672" /></p>
+<p>Note how the prediction at time <code>t</code> is not affected by the anomaly at time step <code>t-12</code>. Neither is the forecast distribution estimate.</p>
+<p>This would look very different when one gets the update behavior slightly wrong. For example, the following implementation of the loop detects the first anomaly in the same way, but uses it to update the model’s state, leading to subsequently poor predictions and false positives, and fails to detect later anomalies.</p>
+<pre class="r"><code># Loop starts when first prediction from Seasonal Naive is possible
+for (t in 13:nrow(df)) {
+  df$forecast[t] &lt;- df$y[t - 12]
+  df$sigma[t] &lt;- sd(df$residual, na.rm = TRUE)
+  df$residual[t] &lt;- df$y[t] - df$forecast[t]
+  
+  if (t &gt; 25) {
+    # Collect 12 residuals before starting anomaly detection
+    df$is_anomaly[t] &lt;- abs(df$residual[t]) &gt; 3 * df$sigma[t]
+  }
+  
+  if (df$is_anomaly[t]) {
+    df$y_cleaned[t] &lt;- df$forecast[t]
+  }
+}</code></pre>
+<p><img src="/note/2023-12-03-anomaly-detection_files/figure-html/plot_anomaly_detection_wrong-1.png" width="672" /></p>
+<div id="what-about-structural-breaks" class="section level2">
+<h2>What about structural breaks?</h2>
+<p>While anomaly detection during training can work well, it may fail spectacularly if an anomaly is not an anomaly but the start of a structural break. Since structural breaks make the time series look different than it did before, chances are the first observation after the structural break will be flagged as anomaly. Then so will be the second. And then the third. And so on, until all observations after the structural break are treated as anomalies because the model never starts to adapt to the new state.</p>
+<p>This is particularly frustrating because the Seasonal Naive method is robust against certain structural breaks that occur in the training period. Adding anomaly detection makes it vulnerable.</p>
+</div>
+<div id="what-values-to-use-for-the-final-forecast-distribution" class="section level2">
+<h2>What values to use for the final forecast distribution?</h2>
+<p>Let’s get philosophical for a second. What <em>are</em> anomalies?</p>
+<p>Ideally, they reflect a weird measurement that will never occur again. Or if it does, it’s another wrong <em>measurement</em>—but not the true <em>state</em> of the measured phenomenon. In that case, let’s drop the anomalies and ignore them in the forecast distribution.</p>
+<p>But what if the anomalies are weird <em>states</em> that the measured phenomenon can end up in? For example, demand for subway rides after a popular concert. While perhaps an irregular and rare event, a similar event may occur again in the future. Do we want to exclude that possibility from our predictions about the future? What if the mention of a book on TikTok let’s sales spike? Drop the observation and assume it will not repeat? Perhaps unrealistic.</p>
+<p>It depends on your context. In a business context, where measurement errors might be less of an issue, anomalies might need to be <em>modeled</em>, not <em>excluded</em>.</p>
+</div>
+<div class="footnotes footnotes-end-of-document">
+<hr />
+<ol>
+<li id="fn1"><p>Notably models from the state-space model family.<a href="#fnref1" class="footnote-back">↩︎</a></p></li>
+</ol>
+</div>
