@@ -21,7 +21,7 @@ main p { padding-left: 0em; }
   {{ $pages := .Pages }}
   {{ if .IsHome }}{{ $pages = .Site.RegularPages }}{{ end }}
     {{ range (where $pages "Section" "!=" "") }}
-    {{ if eq .Dir "linked/" }}
+    {{ if eq .File.Dir "linked/" }}
       <p>
         <span>
           <span class="date">{{ .Date.Format "2006/01/02" }}</span>
@@ -33,7 +33,7 @@ main p { padding-left: 0em; }
       <p>{{ .Content | safeHTML }}</p>
     {{ end }}
     
-    {{ if eq .Dir "note/" }}
+    {{ if eq .File.Dir "note/" }}
       <p>
         <span>
           <span class="date">{{ .Date.Format "2006/01/02" }}</span>
@@ -44,7 +44,7 @@ main p { padding-left: 0em; }
       <p>{{ .Content | safeHTML }}</p>
     {{ end }}
     
-    {{ if eq .Dir "post/" }}
+    {{ if eq .File.Dir "post/" }}
       <p>
         <span>
           <span class="date">{{ .Date.Format "2006/01/02" }}</span>
