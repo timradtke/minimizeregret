@@ -3,7 +3,9 @@
 .RData
 .Ruserdata
 .DS_Store
-public/
+Thumbs.db
+.hugo_build.lock
+/public/
 .httr-oauth
 *.Rproj
 static/data/**/*
