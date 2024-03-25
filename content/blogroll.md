@@ -2,34 +2,22 @@
 title: Blogroll
 ---
 
-John Gruber at Daring Fireball.
+[Statistical Modeling, Causal Inference, and Social Science](https://statmodeling.stat.columbia.edu) by Andrew Gelman and others
 
-Ben Thompson at Stratechery.
+[Hyndsight](https://robjhyndman.com/hyndsight/) by Rob J. Hyndman
 
-Andrew Gelman *et al.* at Statistical Modeling.
+[Three-Toed Sloth](http://bactra.org/weblog/) by Cosma Shalizi
 
-Cosma Shalizi at Three-Toed Sloth.
+[Worry Dream](https://worrydream.com) by Bret Victor
 
-Rob J. Hyndman at Hyndsight.
+[Unofficial Google Data Science](https://www.unofficialgoogledatascience.com)
 
-Variance Explained
+[I'm a Bandit](https://web.archive.org/web/20210123234450/https://blogs.princeton.edu/imabandit/) by Sébastian Bubeck
 
-Thomas Vladeck
+[Michael Betancourt](https://betanalpha.github.io/writing/)
 
-Worry Dream
+[arg min](https://www.argmin.net) (now Substack), previously [arg min](https://archives.argmin.net) (a blog) by Benjamin Recht
 
-Distill
+[David Stutz](https://davidstutz.de/category/blog/) by David Stutz
 
-Unofficial Google Data Science.
-
-Nate Silver et al. at FiveThirtyEight.
-
-Marginal Revolution.
-
-Dustin Curtis at dcurtis
-
-Paul Graham 
-
-Sébastien Bubeck at sbubeck.com
-
-Michael Betancourt
+[The Learning Theory Alliance Blog](https://www.let-all.com/blog/)
