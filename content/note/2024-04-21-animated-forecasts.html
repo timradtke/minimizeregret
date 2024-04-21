@@ -1,0 +1,17 @@
+---
+title: Debug Forecasts with Animated Plots
+author: Tim Radtke
+date: '2024-04-21'
+slug: animated-forecasts
+categories: []
+tags: []
+---
+
+
+
+<p><a href="https://minimizeregret.com/linked/2024/04/15/masson-pydata/">Speaking of GIFs</a>, animated visualizations of rolling forecasts are eye-opening to the impact of individual observations, the number of observations, and default settings on a model’s forecasts. In the example below, the default <code>forecast::auto.arima()</code> transitions between poor model specifications until it can finally pick up the seasonality after 24 observations, only to generate a negative point forecast despite purely non-negative observations.</p>
+<p>Fantastic way to understand forecast methods’ edge-case behavior.</p>
+<p><img src="/note/2024-04-21-animated-forecasts_files/arima_animation.gif" /></p>
+<p>My favorite frame? After nine observations, when a model specification with trend is picked and returns an exploding forecast based on very little evidence.</p>
+<p><img src="/note/2024-04-21-animated-forecasts_files/arima_animation_frame_9.jpg" /></p>
+<p>The code for this GIF <a href="https://github.com/timradtke/anime">in this small Github repo</a>.</p>
