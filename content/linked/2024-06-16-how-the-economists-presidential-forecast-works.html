@@ -1,0 +1,25 @@
+---
+title: "How The Economist's Presidential Forecast Works"
+linktitle: https://www.economist.com/interactive/us-2024-election/prediction-model/president/how-this-works
+author: Tim Radtke
+date: '2024-06-16'
+slug: how-the-economists-presidential-forecast-works
+categories:
+tags:
+---
+
+
+
+<p>The Economist is back with a <a href="https://www.economist.com/interactive/us-2024-election/prediction-model/president/">forecast for the 2024 US presidential election</a> in collaboration with Andrew Gelman and others. One detail in <a href="https://www.economist.com/interactive/us-2024-election/prediction-model/president/how-this-works/">the write-up</a> of their approach stood out to me:</p>
+<blockquote>
+<p>The ultimate result is a list of 10,001 hypothetical paths that the election could take.</p>
+</blockquote>
+<p>Not 10,000, but 10,000 <em>and one</em> MCMC samples. I can’t remember seeing any reference for this choice before (<a href="https://paul-buerkner.github.io/brms/reference/brm.html">packages</a> <a href="https://cran.r-project.org/web/packages/bsts/bsts.pdf">love an</a> <a href="https://blackjax-devs.github.io/blackjax/#hello-world">even</a> <a href="https://num.pyro.ai/en/stable/getting_started.html#a-simple-example-8-schools">number as</a> <a href="https://www.pymc.io/projects/docs/en/stable/api/generated/pymc.sample.html#pymc.sample">default</a>), but I have been adding a single additional sample as tie breaker for a long time: If nothing else, it comes in handy to have a dedicated path represent the median to prevent an awkward median estimate of 269.5 electoral votes.</p>
+<p>The extra sample is especially helpful when the main outcome of interest is a sum of more granular outcomes. In the case of the presidential election, the main outcome is the sum of electoral votes provided by the states. One can first identify the median of the main outcome (currently 237 Democratic electoral votes). Given the extra sample, there will be one MCMC sample that results in the median. From here, one can work backwards and identify this sample index and the corresponding value for every state, for example. The value might not be a state’s most “representative” outcome and it is unlikely to be the state’s median number of electoral votes. But the sum across states will be the median of the main outcome. Great for a visualization depicting what scenario would lead to this projected constellation of the electoral college.</p>
+<p>In contrast, summing up the median outcome of each state, there would be only 226 Democratic electoral votes as of today.<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a></p>
+<div class="footnotes footnotes-end-of-document">
+<hr />
+<ol>
+<li id="fn1"><p>CA, DC, HI, MA, MD, ME 1, NY, VT, CO, CT, DE, IL, NJ, OR, RI, WA, NM, ME, NE 2, VA, NH, MN.<a href="#fnref1" class="footnote-back">↩︎</a></p></li>
+</ol>
+</div>

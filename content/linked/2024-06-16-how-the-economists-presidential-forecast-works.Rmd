@@ -1,0 +1,19 @@
+---
+title: "How The Economist's Presidential Forecast Works"
+linktitle: https://www.economist.com/interactive/us-2024-election/prediction-model/president/how-this-works
+author: Tim Radtke
+date: '2024-06-16'
+slug: how-the-economists-presidential-forecast-works
+categories:
+tags:
+---
+
+The Economist is back with a [forecast for the 2024 US presidential election](https://www.economist.com/interactive/us-2024-election/prediction-model/president/) in collaboration with Andrew Gelman and others. One detail in [the write-up](https://www.economist.com/interactive/us-2024-election/prediction-model/president/how-this-works/) of their approach stood out to me:
+
+> The ultimate result is a list of 10,001 hypothetical paths that the election could take.
+
+Not 10,000, but 10,000 *and one* MCMC samples. I can't remember seeing any reference for this choice before ([packages](https://paul-buerkner.github.io/brms/reference/brm.html) [love an](https://cran.r-project.org/web/packages/bsts/bsts.pdf) [even](https://blackjax-devs.github.io/blackjax/#hello-world) [number as](https://num.pyro.ai/en/stable/getting_started.html#a-simple-example-8-schools) [default](https://www.pymc.io/projects/docs/en/stable/api/generated/pymc.sample.html#pymc.sample)), but I have been adding a single additional sample as tie breaker for a long time: If nothing else, it comes in handy to have a dedicated path represent the median to prevent an awkward median estimate of 269.5 electoral votes.
+
+The extra sample is especially helpful when the main outcome of interest is a sum of more granular outcomes. In the case of the presidential election, the main outcome is the sum of electoral votes provided by the states. One can first identify the median of the main outcome (currently 237 Democratic electoral votes). Given the extra sample, there will be one MCMC sample that results in the median. From here, one can work backwards and identify this sample index and the corresponding value for every state, for example. The value might not be a state's most "representative" outcome and it is unlikely to be the state's median number of electoral votes. But the sum across states will be the median of the main outcome. Great for a visualization depicting what scenario would lead to this projected constellation of the electoral college.
+
+In contrast, summing up the median outcome of each state, there would be only 226 Democratic electoral votes as of today.^[CA, DC, HI, MA, MD, ME 1, NY, VT, CO, CT, DE, IL, NJ, OR, RI, WA, NM, ME, NE 2, VA, NH, MN.]
