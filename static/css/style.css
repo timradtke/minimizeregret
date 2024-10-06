@@ -10,7 +10,7 @@ WELCOME TO THE PARTY, PAL.
 
 :root {
   font-family: Inter, sans-serif;
-  font-feature-settings: 'liga' 1, 'dlig' 1, 'case' 0; /* fix for Chrome */
+  font-feature-settings: 'liga' 1, 'dlig' 1, 'case' 0, 'ss03' 1; /* fix for Chrome */
 }
 
 @supports (font-variation-settings: normal) {
