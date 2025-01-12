@@ -1,0 +1,29 @@
+---
+title: R-squared as Forecast Evaluation Metric
+author: Tim Radtke
+date: '2025-01-12'
+slug: r-squared-as-forecast-evaluation-metric
+categories: []
+tags: []
+---
+
+
+
+<p>When Jane Street’s $120,000 “Real-Time Market Data Forecasting” <a href="https://www.kaggle.com/competitions/jane-street-real-time-market-data-forecasting/overview">Kaggle competition</a> closes tomorrow, submitted forecasts <a href="www.kaggle.com/competitions/jane-street-real-time-market-data-forecasting/overview/evaluation">will be evaluated</a> using <span class="math inline">\(R^2\)</span>:</p>
+<blockquote>
+<p>Submissions are evaluated on a scoring function defined as the sample weighted zero-mean R-squared score (<span class="math inline">\(R^2\)</span>) of <code>responder_6</code>. The formula is give by: <span class="math inline">\(R^2 = 1 - \frac{\sum w_i(y_i - \hat{y}_i)^2}{\sum w_i y_i^2}\)</span> where <span class="math inline">\(y\)</span> and <span class="math inline">\(\hat{y}\)</span> are the ground-truth and predicted value vectors of <code>responder_6</code>, respectively; <span class="math inline">\(w\)</span> is the sample weight vector.</p>
+</blockquote>
+<p>Stats 101 courses have left <span class="math inline">\(R^2\)</span> with a bad rep as gameable regression metric. But I’ve come to appreciate it as a metric in forecasting—when calculated on the test set with the <a href="https://en.wikipedia.org/wiki/Total_sum_of_squares">total-sum-of-squares</a> denominator based on the test period’s empirical mean, <span class="math inline">\(\bar{y}_{T,h} = \sum_{t = T+1}^{T+h}y_t\)</span>, where <span class="math inline">\(T\)</span> is the training set’s last observation and <span class="math inline">\(h\)</span> the number of observations in the test set. Then:</p>
+<p><span class="math display">\[
+R^2 = 1 - \frac{\sum_{t = T+1}^{T+h}(y_t - \hat{y}_t)^2}{\sum_{t = T+1}^{T+h}(y_t - \bar{y}_{T,h})^2}
+\]</span></p>
+<p>Above definition gives the total-sum-of-squares the advantage of future knowledge included in <span class="math inline">\(\bar{y}_{T,h}\)</span> that the predictions <span class="math inline">\(\hat{y}_t\)</span> used for the <a href="https://en.wikipedia.org/wiki/Residual_sum_of_squares">residual-sum-of-squares</a> do not have. In comparison to its linear regression origin, this test set-focused definition is not going to improve as parameters are added to the forecast model. But it does keep its interpretability:</p>
+<ul>
+<li>A value of 1 indicates a perfect model</li>
+<li>A value of 0 indicates a model as good as the test mean (the latter being a forecast that is both perfectly unbiased and perfectly predicts the total sum over the forecast horizon)</li>
+<li>Any negative value indicates a model that isn’t even as good as the simple test mean (but then again, the test mean uses future knowledge)</li>
+</ul>
+<p>For example, when predicting the final twelve months of <a href="https://stat.ethz.ch/R-manual/R-devel/library/datasets/html/AirPassengers.html">AirPassengers</a> data, the obviously poor prediction given by the training set mean results in an <span class="math inline">\(R^2\)</span> of -8.24 whereas a seasonal naive prediction achieves an <span class="math inline">\(R^2\)</span> of 0.54.</p>
+<p>This shouldn’t come as a suprise. Interpreting <span class="math inline">\(R^2\)</span> as the <a href="https://en.wikipedia.org/wiki/Fraction_of_variance_unexplained">fraction of (test) variance explained</a>, the seasonal naive prediction can explain more than half of the variance that the test mean left unexplained. The model captures a large part of the signal hidden in the data’s variation.</p>
+<p>Just like Jane Street replaced the test set empirical mean in their definition of <span class="math inline">\(R^2\)</span> by zero, which in their application of predicting expected financial returns is a hard to beat expected value, one could replace the total sum of squares denominator by the squared errors of a different benchmark such as seasonal naive predictions when it is known that due to the data’s seasonality the seasonal naive prediction will consistently outperform the test set mean despite its future knowledge. Thus, <span class="math inline">\(R^2\)</span> is not so different from the more common relative measures such as the Relative Mean Squared Error described in section 6.1.4 of <a href="https://arxiv.org/pdf/2203.10716v2">Hewamalage et al. (2022)</a>, or Skill Scores employed in weather prediction described by <a href="https://doi.org/10.1175/1520-0493(1988)116%3C2417:SSBOTM%3E2.0.CO;2">Murphy (1988)</a>.</p>
+<p>Then again, when a time series’ variance is not dominated by its seasonal component, <span class="math inline">\(R^2\)</span> and its interpretation as fraction of variance explained can leave a damning picture of a model’s forecasts not actually being all that skillful. It casts doubt by asking how much signal your model has picked up to meaningfully predict future variation. Suddenly any value larger than zero will feel like an enormous success.</p>
