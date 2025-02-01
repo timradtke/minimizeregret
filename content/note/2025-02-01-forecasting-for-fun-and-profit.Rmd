@@ -1,0 +1,83 @@
+---
+title: Forecasting for Fun and Profit 🤑
+author: Tim Radtke
+date: '2025-02-01'
+slug: forecasting-for-fun-and-profit
+categories: []
+tags: []
+---
+
+```{r, echo = FALSE}
+set.seed(5883)
+```
+
+For the remainder of the year, I will simulate the process of running the inventory replenishment decisions of a store. If work has taught me anything, it's that you look differently at your forecast model when it decides day after day how money is spent---and doesn't just fill cells in Excel. Unfortunately, that's not often the topic of academic research. But I have a bunch of loosely connected ideas about business forecasting that I'd like to bring to paper, and the worked example of a store and its replenishment decisions will serve as the connective tissue.
+
+To make replenishment decisions, I will first of all need to simulate a store that sells products and replenishes them to keep them on stock. With [`shopr`](https://github.com/timradtke/shopr), I have written a small package that models a simple world in which every day a store faces demand, sells products from inventory, and decides how many products to replenish. More on that below.
+
+While you can run simulations with `shopr` as fast as your computer let's you, I will simulate the replenishment decisions in real time: The iterations of the simulated world will be daily, from January 1 through December 31 of 2015. On the first day of every month I will publish a report that summarizes the profit and loss and cash flow achieved by the store in the previous month.^[Like those Mastodon accounts posting what happened on the same day during World War II.]
+
+Compared to simulating the entire year at once, proceeding in this step wise fashion will give me opportunity to make changes to the forecast method and inventory optimization and observe the changes' impact. The step wise approach is also closer to the real-world where performance is observed over time and period-over-period changes raise questions. That should spark some discussions.
+
+I have published the [first report](https://minimizeregret.com/ffp-shop/report-monthly-202501) earlier today, summarizing the month of January.
+
+In it you'll find financials of a store called "FF&P Store". It sells 1,906 different emojis (some to be released in the future). Reading tables of top sellers and out-of-stock products becomes just so much easier when it comes with product imagery.^[Credit where credit is due: The [unicode-emoji-json](https://github.com/muan/unicode-emoji-json) project has come in handy as tabular overview of all emojis with basic metadata.]
+
+```{r Example Products, echo = FALSE}
+dplyr::inner_join(
+  shopr::open_table("products", path = "~/shop-ffp/state") |>
+    dplyr::filter(date == "2015-01-01"),
+  shopr::open_table("hierarchy", path = "~/shop-ffp/state"),
+  by = "sku"
+) |>
+  dplyr::collect() |>
+  dplyr::filter(
+    sku %in% c("money-mouth face", "see-no-evil monkey", "microbe",
+               "no one under eighteen", "flag Antarctica")
+  ) |>
+  dplyr::mutate(sku = paste0(emoji_image, " ", sku)) |>
+  dplyr::select(
+    SKU = sku,
+    `Private Label` = is_private_label,
+    `Sales Price` = sales_price,
+    `Purchase Price` = purchase_price,
+    `Holding Cost` = stock_cost,
+    `Delivery Days` = delivery_days
+  ) |>
+  gt::gt(
+    #caption = "Some products sold by the shop.",
+    rowname_col = "SKU"
+  ) |>
+  gt::fmt_currency(
+    columns = c("Sales Price", "Purchase Price", "Holding Cost"),
+    currency = "USD", decimals = 1
+  ) |>
+  gt::fmt_tf(columns = "Private Label", tf_style = "yes-no") |>
+  gt::as_raw_html(inline_css = FALSE)
+```
+
+The store's financials are an aggregation of products' observed sales, products' prices, and the costs for purchasing products and holding them on inventory. The prices, costs, and the demand underlying the sales are the input data to the simulation and can either be generated in `shopr` or passed to it from existing tables.
+
+For this simulation, I use some of the daily sales time series released in the M5 competition as historical sales and future demand, and the accompanying prices as sales prices. That's a useful set of data to demonstrate fairly common real-world scenarios. I extend the demand and sales prices by purchase prices and holding costs. Additionally, I generate starting levels of inventory and delivery lead times for each material.
+
+With that data as input, the simulation proceeds as follows:
+
+```
+For each day from January 1 through January 31:
+    - Receive previously ordered shipments
+    - Update inventory
+    - Observe sales by comparing demand against inventory
+    
+    - User: Derive forecasts from historical sales
+    - User: Optimize replenishment given forecasts and inventory
+    
+    - Open orders given replenishment decisions
+```
+
+A nice feature of `shopr` is that it stores the daily state of inventory, orders, and sales in partitioned parquet files. Using `arrow` in the background, it's efficient to analyze the resulting data both during the iterations (e.g. when comparing forecasts and inventory) as well as at the end when preparing the monthly report.
+
+While forecasts and replenishment decisions motivate this whole exercise, the key determinant of the financial results is the store's business model: How frequently can we order products? Do we need to buy different products at once? Are there minimum order quantities? What delivery lead times do we have with suppliers? For data scientists these tend to be fixed constraints provided by others, but when simulating we need to choose each one.
+
+The current version of `shopr` does take delivery lead times into account and the emoji store will replenish some products at shorter lead times and others, the private brands, at longer lead times. But `shopr` does not yet constrain the frequency, size, and cost of orders in any way. That's unrealistic and I will adjust it in future iterations to make the optimization problem more interesting.
+
+This then is also the final message: The work has only begun. Consider this a conversation starter and expect more to come soon.^[A blogger's famous last words.]

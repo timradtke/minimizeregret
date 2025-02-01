@@ -1,0 +1,537 @@
+---
+title: Forecasting for Fun and Profit 🤑
+author: Tim Radtke
+date: '2025-02-01'
+slug: forecasting-for-fun-and-profit
+categories: []
+tags: []
+---
+
+
+
+<p>For the remainder of the year, I will simulate the process of running the inventory replenishment decisions of a store. If work has taught me anything, it’s that you look differently at your forecast model when it decides day after day how money is spent—and doesn’t just fill cells in Excel. Unfortunately, that’s not often the topic of academic research. But I have a bunch of loosely connected ideas about business forecasting that I’d like to bring to paper, and the worked example of a store and its replenishment decisions will serve as the connective tissue.</p>
+<p>To make replenishment decisions, I will first of all need to simulate a store that sells products and replenishes them to keep them on stock. With <a href="https://github.com/timradtke/shopr"><code>shopr</code></a>, I have written a small package that models a simple world in which every day a store faces demand, sells products from inventory, and decides how many products to replenish. More on that below.</p>
+<p>While you can run simulations with <code>shopr</code> as fast as your computer let’s you, I will simulate the replenishment decisions in real time: The iterations of the simulated world will be daily, from January 1 through December 31 of 2015. On the first day of every month I will publish a report that summarizes the profit and loss and cash flow achieved by the store in the previous month.<a href="#fn1" class="footnote-ref" id="fnref1"><sup>1</sup></a></p>
+<p>Compared to simulating the entire year at once, proceeding in this step wise fashion will give me opportunity to make changes to the forecast method and inventory optimization and observe the changes’ impact. The step wise approach is also closer to the real-world where performance is observed over time and period-over-period changes raise questions. That should spark some discussions.</p>
+<p>I have published the <a href="https://minimizeregret.com/ffp-shop/report-monthly-202501">first report</a> earlier today, summarizing the month of January.</p>
+<p>In it you’ll find financials of a store called “FF&amp;P Store”. It sells 1,906 different emojis (some to be released in the future). Reading tables of top sellers and out-of-stock products becomes just so much easier when it comes with product imagery.<a href="#fn2" class="footnote-ref" id="fnref2"><sup>2</sup></a></p>
+<div id="rxileqbmbo" style="padding-left:0px;padding-right:0px;padding-top:10px;padding-bottom:10px;overflow-x:auto;overflow-y:auto;width:auto;height:auto;">
+  <style>#rxileqbmbo table {
+  font-family: system-ui, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+#rxileqbmbo thead, #rxileqbmbo tbody, #rxileqbmbo tfoot, #rxileqbmbo tr, #rxileqbmbo td, #rxileqbmbo th {
+  border-style: none;
+}
+
+#rxileqbmbo p {
+  margin: 0;
+  padding: 0;
+}
+
+#rxileqbmbo .gt_table {
+  display: table;
+  border-collapse: collapse;
+  line-height: normal;
+  margin-left: auto;
+  margin-right: auto;
+  color: #333333;
+  font-size: 16px;
+  font-weight: normal;
+  font-style: normal;
+  background-color: #FFFFFF;
+  width: auto;
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #A8A8A8;
+  border-right-style: none;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #A8A8A8;
+  border-left-style: none;
+  border-left-width: 2px;
+  border-left-color: #D3D3D3;
+}
+
+#rxileqbmbo .gt_caption {
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
+
+#rxileqbmbo .gt_title {
+  color: #333333;
+  font-size: 125%;
+  font-weight: initial;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-bottom-color: #FFFFFF;
+  border-bottom-width: 0;
+}
+
+#rxileqbmbo .gt_subtitle {
+  color: #333333;
+  font-size: 85%;
+  font-weight: initial;
+  padding-top: 3px;
+  padding-bottom: 5px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-top-color: #FFFFFF;
+  border-top-width: 0;
+}
+
+#rxileqbmbo .gt_heading {
+  background-color: #FFFFFF;
+  text-align: center;
+  border-bottom-color: #FFFFFF;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+}
+
+#rxileqbmbo .gt_bottom_border {
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+}
+
+#rxileqbmbo .gt_col_headings {
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+}
+
+#rxileqbmbo .gt_col_heading {
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: normal;
+  text-transform: inherit;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+  vertical-align: bottom;
+  padding-top: 5px;
+  padding-bottom: 6px;
+  padding-left: 5px;
+  padding-right: 5px;
+  overflow-x: hidden;
+}
+
+#rxileqbmbo .gt_column_spanner_outer {
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: normal;
+  text-transform: inherit;
+  padding-top: 0;
+  padding-bottom: 0;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+
+#rxileqbmbo .gt_column_spanner_outer:first-child {
+  padding-left: 0;
+}
+
+#rxileqbmbo .gt_column_spanner_outer:last-child {
+  padding-right: 0;
+}
+
+#rxileqbmbo .gt_column_spanner {
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  vertical-align: bottom;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  overflow-x: hidden;
+  display: inline-block;
+  width: 100%;
+}
+
+#rxileqbmbo .gt_spanner_row {
+  border-bottom-style: hidden;
+}
+
+#rxileqbmbo .gt_group_heading {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: initial;
+  text-transform: inherit;
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+  vertical-align: middle;
+  text-align: left;
+}
+
+#rxileqbmbo .gt_empty_group_heading {
+  padding: 0.5px;
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: initial;
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  vertical-align: middle;
+}
+
+#rxileqbmbo .gt_from_md > :first-child {
+  margin-top: 0;
+}
+
+#rxileqbmbo .gt_from_md > :last-child {
+  margin-bottom: 0;
+}
+
+#rxileqbmbo .gt_row {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  margin: 10px;
+  border-top-style: solid;
+  border-top-width: 1px;
+  border-top-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 1px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 1px;
+  border-right-color: #D3D3D3;
+  vertical-align: middle;
+  overflow-x: hidden;
+}
+
+#rxileqbmbo .gt_stub {
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: initial;
+  text-transform: inherit;
+  border-right-style: solid;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+#rxileqbmbo .gt_stub_row_group {
+  color: #333333;
+  background-color: #FFFFFF;
+  font-size: 100%;
+  font-weight: initial;
+  text-transform: inherit;
+  border-right-style: solid;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+  padding-left: 5px;
+  padding-right: 5px;
+  vertical-align: top;
+}
+
+#rxileqbmbo .gt_row_group_first td {
+  border-top-width: 2px;
+}
+
+#rxileqbmbo .gt_row_group_first th {
+  border-top-width: 2px;
+}
+
+#rxileqbmbo .gt_summary_row {
+  color: #333333;
+  background-color: #FFFFFF;
+  text-transform: inherit;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+#rxileqbmbo .gt_first_summary_row {
+  border-top-style: solid;
+  border-top-color: #D3D3D3;
+}
+
+#rxileqbmbo .gt_first_summary_row.thick {
+  border-top-width: 2px;
+}
+
+#rxileqbmbo .gt_last_summary_row {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+}
+
+#rxileqbmbo .gt_grand_summary_row {
+  color: #333333;
+  background-color: #FFFFFF;
+  text-transform: inherit;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+#rxileqbmbo .gt_first_grand_summary_row {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-top-style: double;
+  border-top-width: 6px;
+  border-top-color: #D3D3D3;
+}
+
+#rxileqbmbo .gt_last_grand_summary_row_top {
+  padding-top: 8px;
+  padding-bottom: 8px;
+  padding-left: 5px;
+  padding-right: 5px;
+  border-bottom-style: double;
+  border-bottom-width: 6px;
+  border-bottom-color: #D3D3D3;
+}
+
+#rxileqbmbo .gt_striped {
+  background-color: rgba(128, 128, 128, 0.05);
+}
+
+#rxileqbmbo .gt_table_body {
+  border-top-style: solid;
+  border-top-width: 2px;
+  border-top-color: #D3D3D3;
+  border-bottom-style: solid;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+}
+
+#rxileqbmbo .gt_footnotes {
+  color: #333333;
+  background-color: #FFFFFF;
+  border-bottom-style: none;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 2px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+}
+
+#rxileqbmbo .gt_footnote {
+  margin: 0px;
+  font-size: 90%;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+#rxileqbmbo .gt_sourcenotes {
+  color: #333333;
+  background-color: #FFFFFF;
+  border-bottom-style: none;
+  border-bottom-width: 2px;
+  border-bottom-color: #D3D3D3;
+  border-left-style: none;
+  border-left-width: 2px;
+  border-left-color: #D3D3D3;
+  border-right-style: none;
+  border-right-width: 2px;
+  border-right-color: #D3D3D3;
+}
+
+#rxileqbmbo .gt_sourcenote {
+  font-size: 90%;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  padding-left: 5px;
+  padding-right: 5px;
+}
+
+#rxileqbmbo .gt_left {
+  text-align: left;
+}
+
+#rxileqbmbo .gt_center {
+  text-align: center;
+}
+
+#rxileqbmbo .gt_right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+#rxileqbmbo .gt_font_normal {
+  font-weight: normal;
+}
+
+#rxileqbmbo .gt_font_bold {
+  font-weight: bold;
+}
+
+#rxileqbmbo .gt_font_italic {
+  font-style: italic;
+}
+
+#rxileqbmbo .gt_super {
+  font-size: 65%;
+}
+
+#rxileqbmbo .gt_footnote_marks {
+  font-size: 75%;
+  vertical-align: 0.4em;
+  position: initial;
+}
+
+#rxileqbmbo .gt_asterisk {
+  font-size: 100%;
+  vertical-align: 0;
+}
+
+#rxileqbmbo .gt_indent_1 {
+  text-indent: 5px;
+}
+
+#rxileqbmbo .gt_indent_2 {
+  text-indent: 10px;
+}
+
+#rxileqbmbo .gt_indent_3 {
+  text-indent: 15px;
+}
+
+#rxileqbmbo .gt_indent_4 {
+  text-indent: 20px;
+}
+
+#rxileqbmbo .gt_indent_5 {
+  text-indent: 25px;
+}
+
+#rxileqbmbo .katex-display {
+  display: inline-flex !important;
+  margin-bottom: 0.75em !important;
+}
+
+#rxileqbmbo div.Reactable > div.rt-table > div.rt-thead > div.rt-tr.rt-tr-group-header > div.rt-th-group:after {
+  height: 0px !important;
+}
+</style>
+  <table class="gt_table" data-quarto-disable-processing="false" data-quarto-bootstrap="false">
+  <thead>
+    <tr class="gt_col_headings">
+      <th class="gt_col_heading gt_columns_bottom_border gt_left" rowspan="1" colspan="1" scope="col" id="a::stub"></th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_left" rowspan="1" colspan="1" scope="col" id="Private-Label">Private Label</th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="1" colspan="1" scope="col" id="Sales-Price">Sales Price</th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="1" colspan="1" scope="col" id="Purchase-Price">Purchase Price</th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="1" colspan="1" scope="col" id="Holding-Cost">Holding Cost</th>
+      <th class="gt_col_heading gt_columns_bottom_border gt_right" rowspan="1" colspan="1" scope="col" id="Delivery-Days">Delivery Days</th>
+    </tr>
+  </thead>
+  <tbody class="gt_table_body">
+    <tr><th id="stub_1_1" scope="row" class="gt_row gt_left gt_stub">🔞 no one under eighteen</th>
+<td headers="stub_1_1 Private Label" class="gt_row gt_left">no</td>
+<td headers="stub_1_1 Sales Price" class="gt_row gt_right">$2.4</td>
+<td headers="stub_1_1 Purchase Price" class="gt_row gt_right">$0.5</td>
+<td headers="stub_1_1 Holding Cost" class="gt_row gt_right">$0.1</td>
+<td headers="stub_1_1 Delivery Days" class="gt_row gt_right">5</td></tr>
+    <tr><th id="stub_1_2" scope="row" class="gt_row gt_left gt_stub">🦠 microbe</th>
+<td headers="stub_1_2 Private Label" class="gt_row gt_left">yes</td>
+<td headers="stub_1_2 Sales Price" class="gt_row gt_right">$1.1</td>
+<td headers="stub_1_2 Purchase Price" class="gt_row gt_right">$0.1</td>
+<td headers="stub_1_2 Holding Cost" class="gt_row gt_right">$0.1</td>
+<td headers="stub_1_2 Delivery Days" class="gt_row gt_right">41</td></tr>
+    <tr><th id="stub_1_3" scope="row" class="gt_row gt_left gt_stub">🇦🇶 flag Antarctica</th>
+<td headers="stub_1_3 Private Label" class="gt_row gt_left">no</td>
+<td headers="stub_1_3 Sales Price" class="gt_row gt_right">$6.9</td>
+<td headers="stub_1_3 Purchase Price" class="gt_row gt_right">$3.9</td>
+<td headers="stub_1_3 Holding Cost" class="gt_row gt_right">$0.1</td>
+<td headers="stub_1_3 Delivery Days" class="gt_row gt_right">5</td></tr>
+    <tr><th id="stub_1_4" scope="row" class="gt_row gt_left gt_stub">🙈 see-no-evil monkey</th>
+<td headers="stub_1_4 Private Label" class="gt_row gt_left">no</td>
+<td headers="stub_1_4 Sales Price" class="gt_row gt_right">$2.5</td>
+<td headers="stub_1_4 Purchase Price" class="gt_row gt_right">$0.7</td>
+<td headers="stub_1_4 Holding Cost" class="gt_row gt_right">$0.1</td>
+<td headers="stub_1_4 Delivery Days" class="gt_row gt_right">3</td></tr>
+    <tr><th id="stub_1_5" scope="row" class="gt_row gt_left gt_stub">🤑 money-mouth face</th>
+<td headers="stub_1_5 Private Label" class="gt_row gt_left">no</td>
+<td headers="stub_1_5 Sales Price" class="gt_row gt_right">$1.7</td>
+<td headers="stub_1_5 Purchase Price" class="gt_row gt_right">$0.5</td>
+<td headers="stub_1_5 Holding Cost" class="gt_row gt_right">$0.0</td>
+<td headers="stub_1_5 Delivery Days" class="gt_row gt_right">8</td></tr>
+  </tbody>
+  
+  
+</table>
+</div>
+<p>The store’s financials are an aggregation of products’ observed sales, products’ prices, and the costs for purchasing products and holding them on inventory. The prices, costs, and the demand underlying the sales are the input data to the simulation and can either be generated in <code>shopr</code> or passed to it from existing tables.</p>
+<p>For this simulation, I use some of the daily sales time series released in the M5 competition as historical sales and future demand, and the accompanying prices as sales prices. That’s a useful set of data to demonstrate fairly common real-world scenarios. I extend the demand and sales prices by purchase prices and holding costs. Additionally, I generate starting levels of inventory and delivery lead times for each material.</p>
+<p>With that data as input, the simulation proceeds as follows:</p>
+<pre><code>For each day from January 1 through January 31:
+    - Receive previously ordered shipments
+    - Update inventory
+    - Observe sales by comparing demand against inventory
+    
+    - User: Derive forecasts from historical sales
+    - User: Optimize replenishment given forecasts and inventory
+    
+    - Open orders given replenishment decisions</code></pre>
+<p>A nice feature of <code>shopr</code> is that it stores the daily state of inventory, orders, and sales in partitioned parquet files. Using <code>arrow</code> in the background, it’s efficient to analyze the resulting data both during the iterations (e.g. when comparing forecasts and inventory) as well as at the end when preparing the monthly report.</p>
+<p>While forecasts and replenishment decisions motivate this whole exercise, the key determinant of the financial results is the store’s business model: How frequently can we order products? Do we need to buy different products at once? Are there minimum order quantities? What delivery lead times do we have with suppliers? For data scientists these tend to be fixed constraints provided by others, but when simulating we need to choose each one.</p>
+<p>The current version of <code>shopr</code> does take delivery lead times into account and the emoji store will replenish some products at shorter lead times and others, the private brands, at longer lead times. But <code>shopr</code> does not yet constrain the frequency, size, and cost of orders in any way. That’s unrealistic and I will adjust it in future iterations to make the optimization problem more interesting.</p>
+<p>This then is also the final message: The work has only begun. Consider this a conversation starter and expect more to come soon.<a href="#fn3" class="footnote-ref" id="fnref3"><sup>3</sup></a></p>
+<div class="footnotes footnotes-end-of-document">
+<hr />
+<ol>
+<li id="fn1"><p>Like those Mastodon accounts posting what happened on the same day during World War II.<a href="#fnref1" class="footnote-back">↩︎</a></p></li>
+<li id="fn2"><p>Credit where credit is due: The <a href="https://github.com/muan/unicode-emoji-json">unicode-emoji-json</a> project has come in handy as tabular overview of all emojis with basic metadata.<a href="#fnref2" class="footnote-back">↩︎</a></p></li>
+<li id="fn3"><p>A blogger’s famous last words.<a href="#fnref3" class="footnote-back">↩︎</a></p></li>
+</ol>
+</div>
