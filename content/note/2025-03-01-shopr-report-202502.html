@@ -1,0 +1,21 @@
+---
+title: FF&P Store Report for 2025-02
+author: Tim Radtke
+date: '2025-03-01'
+slug: shopr-report-202502
+categories: [ffpshop]
+tags: [ffpshop]
+---
+
+
+
+<p>In <a href="https://minimizeregret.com/note/2025/02/01/forecasting-for-fun-and-profit">“Forecasting for Fun and Profit”</a> I described how I would simulate the process of running the inventory replenishment decisions of a store for the remainder of a year. Every month I would publish a report on the preceding month’s results.</p>
+<p>I just published <a href="https://minimizeregret.com/ffp-shop/report-monthly-202502-20250301">the report summarizing the month of February</a>.</p>
+<p>A few quick thoughts:</p>
+<ul>
+<li>To properly reflect fixed order costs in cost-of-goods-sold, <a href="https://github.com/timradtke/shopr/commit/32952a89ea92acdb09620c9d75cbe0148f3618ed">I updated the <code>shopr</code> package</a> I use for the simulation. The derivation of cost-of-goods-sold now attributes part of an order’s fixed cost to each unit of product sold based on how many units were ordered.</li>
+<li>Simulating realistic data is hard. While the real world has a way of keeping only those combinations of purchase prices, delivery times, order and holding costs that fit to the demand for a product, picking these parameters at random for each product while keeping the overall business reasonably profitable is hard. To avoid a simulation that implies an unprofitable business model, I adjusted the upfront simulation of the products’ attributes.</li>
+<li>The previous two bullets imply that the simulation for February would be nothing like the one I had <a href="https://minimizeregret.com/ffp-shop/report-monthly-202501">previously reported for January</a>. In fact, I needed to re-simulate January as basis for February. So I also published a <a href="https://minimizeregret.com/ffp-shop/report-monthly-202501-20250301">new version of the January report</a>.</li>
+<li>The reports now feature additional product-level information (private-brand products, new products, discontinued products) and a revised out-of-stock impact.</li>
+<li>While the shop is not yet unprofitable, February shows an increase in holding costs <em>and</em> out-of-stock periods, and thus first signs that the (still) default forecast and replenishment optimization are not good enough and will lead the shop into an untenable downward spiral.</li>
+</ul>
