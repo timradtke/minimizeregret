@@ -3,8 +3,8 @@ title: Forecasting for Fun and Profit 🤑
 author: Tim Radtke
 date: '2025-02-01'
 slug: forecasting-for-fun-and-profit
-categories: []
-tags: []
+categories: [ffpshop]
+tags: [ffpshop]
 ---
 
 ```{r, echo = FALSE}
@@ -81,3 +81,9 @@ While forecasts and replenishment decisions motivate this whole exercise, the ke
 The current version of `shopr` does take delivery lead times into account and the emoji store will replenish some products at shorter lead times and others, the private brands, at longer lead times. But `shopr` does not yet constrain the frequency, size, and cost of orders in any way. That's unrealistic and I will adjust it in future iterations to make the optimization problem more interesting.
 
 This then is also the final message: The work has only begun. Consider this a conversation starter and expect more to come soon.^[A blogger's famous last words.]
+
+Edit (2025-03-01): Here's a list of all reports published to-date:
+
+- [January 2025](https://minimizeregret.com/ffp-shop/report-monthly-202501), published on 2025-02-01
+- [January 2025](https://minimizeregret.com/ffp-shop/report-monthly-202501-20250301), published on 2025-03-01
+- [February 2025](https://minimizeregret.com/ffp-shop/report-monthly-202502-20250301), published on 2025-03-01
