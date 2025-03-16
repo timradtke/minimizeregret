@@ -1,0 +1,20 @@
+---
+title: Inherently Coherent Forecasts
+author: Tim Radtke
+date: '2025-03-16'
+slug: inherently-coherent-forecasts
+categories:
+tags:
+---
+
+Suppose you offer a single API endpoint that takes historical observations of one time series at a time (not unlike [Nixtla's TimeGPT](https://docs.nixtla.io/reference/forecast_forecast_post)). Suppose further that everyone at your company uses this endpoint to generate any business forecast they need. What behaviors should the API's forecast exhibit?
+
+An obvious one would be [forecast coherence across aggregation levels](https://otexts.com/fpp3/hierarchical.html). Say your company sells three products. You have the historical revenue for the three products, $Y_1$, $Y_2$, $Y_3$, as well as the historical revenue for the company as a whole, $Y$, where $Y=Y_1+Y_2+Y_3$. When you feed $Y_1$ into the API, the API returns forecast $\text{API}(Y_1)=\hat{Y}_1$. It returns $\hat{Y}_2$ given $Y_2$, $\hat{Y}_3$ given $Y_3$, and given $Y$ it returns $\hat{Y}$. If we want to see a forecast at company-level that "makes sense" given product-level forecasts, we want the forecasts to be coherent: $\hat{Y}=\hat{Y}_1 + \hat{Y}_2 + \hat{Y}_3$. But given that the API only ever sees one time series at a time, what model could be used to provide coherent forecasts?
+
+Again, keep in mind that the API doesn’t have access to more information than its current input. For example, when you feed it $Y_2$, it doesn’t know that $Y_1$ and $Y_3$ exist. It also doesn’t know whether $Y_2$ is at the hierarchy’s bottom- or top-level. The API does not have access to all possible time series that exist at the company. Consequently, the API does not have the information required to apply the methods from the [vast](https://otexts.com/fpp3/hierarchical.html) [literature](https://proceedings.mlr.press/v139/rangapuram21a.html) [on](https://arxiv.org/abs/2502.15983) [coherent](https://www.tandfonline.com/doi/full/10.1080/01621459.2018.1448825) [forecasts](https://proceedings.mlr.press/v70/taieb17a.html). What modeling approach will return coherent forecasts nevertheless?
+
+The seasonal naive method would. As would the naive method, of course. The mean forecast, too. And any other linear combination of the past observations with a pre-determined context length and coefficients.^[For example, the mean forecast must not be the mean of the provided observations, but the mean of $k$ observations resulting in coefficients $1/k$. A time series with $n<k$ observations needs to be padded with zeros. A time series with $n>k$ observations is shortened to the $k$ most recent observations.] Any pre-trained—the coefficients must not change depending on the input provided to the API—linear autoregressive model of order p will do.
+
+That’s a fairly flexible model family. It also includes the [Non-Parametric Time Series Forecaster](https://arxiv.org/abs/2312.14657) and [threedx](https://minimizeregret.com/post/2023/10/19/threedx). Thus, the API could do an OK job for most series passed to it. It would have an obvious weakness in new or recently discontinued time series, though. The API could not, for example, override its usual forecast for a recently discontinued product and forecast zero instead. The same holds for any other kind of structural break as well as anomalies. That would make it tough to rely exclusively on such an API for operational decisions happening at the low hierarchy level ridden with discontinuities.
+
+The above combined with [recent evidence](https://minimizeregret.com/linked/2025/02/23/performance-of-zero-shot-time-series-foundation-models-on-cloud-data/) make me inclined to offer the seasonal naive method as *Zero-Shot Foundation Model with Inherently Coherent Forecasts* available as API.
