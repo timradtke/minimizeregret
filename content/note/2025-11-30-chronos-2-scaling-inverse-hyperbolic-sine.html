@@ -1,0 +1,19 @@
+---
+title: Scaling Time Series Using the Inverse Hyperbolic Sine
+author: Tim Radtke
+date: '2025-11-30'
+slug: chronos-2-scaling-inverse-hyperbolic-sine
+categories: []
+tags: []
+---
+
+
+
+<p>This one’s new to me: The Chronos-2 tokenization pipeline follows up an initial standardization of input time series with a variance stabilizing transformation in the <em>inverse hyperbolic sine function</em>, <span class="math inline">\(\sinh^{-1}\)</span>, as described in the <a href="https://arxiv.org/abs/2510.15821">model’s technical report</a>.</p>
+<p>The <a href="https://en.wikipedia.org/wiki/Inverse_hyperbolic_functions">inverse hyperbolic sine function</a> is defined as:</p>
+<p><span class="math display">\[
+\sinh^{-1}(x) = \ln(x + \sqrt{x^2+1}).
+\]</span></p>
+<p>As such it is an alternative to the <span class="math inline">\(\ln(x+1)\)</span> transform with the added benefit of being applicable to negative values.</p>
+<p>While news to me, the technical report points out that the inverse hyperbolic sine is no news to the electricity price forecasting literature, citing “<a href="https://www.mdpi.com/1996-1073/11/8/2039">Efficient Forecasting of Electricity Spot Prices with
+Expert and LASSO Models</a>” by Bartosz Uniejewski and Rafał Weron, which describes the inverse hyperbolic sine and other variance stabilizing transformations in more detail.</p>
