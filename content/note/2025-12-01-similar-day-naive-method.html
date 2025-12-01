@@ -1,0 +1,18 @@
+---
+title: Similar-Day Naive Method
+author: Tim Radtke
+date: '2025-12-01'
+slug: similar-day-naive-method
+categories: []
+tags: []
+---
+
+
+
+<p>Like the <a href="https://arxiv.org/abs/2510.15821">Chronos-2 technical report</a>, Uniejewski and Weron compare the approaches implemented in their <a href="https://minimizeregret.com/note/2025/11/30/chronos-2-scaling-inverse-hyperbolic-sine">aforementioned</a> <a href="https://www.mdpi.com/1996-1073/11/8/2039">paper</a> against a naive baseline. Unlike the technical report which uses seasonal naive for all data sets, Uniejewski and Weron, to their credit, employ a baseline that, while naive, is tuned to their use case of electricity price forecasting and employs as much knowledge as possible:</p>
+<blockquote>
+<p>The first benchmark, the so-called naive method, belongs to the class of similar-day techniques. It is defined by <span class="math inline">\(\hat{P}_{d,h} = \hat{P}_{d-7,h}\)</span> for Monday, Saturday and Sunday, and <span class="math inline">\(\hat{P}_{d,h} = \hat{P}_{d-1,h}\)</span> otherwise.
+As Contreras et al. argued, forecasting procedures that are not calibrated carefully fail to outperform this extremely simple method surprisingly often.</p>
+</blockquote>
+<p>So given the different human patterns in electricity usage on workdays and on weekends, they use the naive method for workdays and seasonal naive for the weekend and Monday (because Sunday can’t be used to predict Monday).</p>
+<p>Reminds me of <a href="https://minimizeregret.com/post/2022/08/30/where-is-the-seasonal-naive-benchmark/#fn1">this footnote</a>.</p>
